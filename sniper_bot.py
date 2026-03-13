@@ -16,18 +16,15 @@ if not LINE_TOKEN or not LINE_USER_ID:
     print("❌ 致命錯誤：找不到 LINE 金鑰，請確認 GitHub Secrets 是否設定正確。")
     exit()
 
-# 🎯 狙擊監控清單 (指揮官請在此處手動換彈匣)
+# 🎯 狙擊監控清單
 WATCHLIST = {
     "2330.TW": "台積電",
     "2317.TW": "鴻海",
-    "2485.TW": "兆赫",
-    "4960.TW": "誠美材",
-    "3013.TW": "晟銘電",
+    "2603.TW": "長榮",
+    "2454.TW": "聯發科",
+    "3231.TW": "緯創",
     "0050.TW": "元大台灣50",
-    "00631L.TW": "元大台灣50正2",
-    "0052.TW": "富邦科技",
-    "00981A.TW": "主動統一台股增長",
-    "009816.TW": "凱基台灣TOP50"
+    "00929.TW": "復華台灣科技優息"
 }
 
 # ==========================================
@@ -54,11 +51,11 @@ def calculate_indicators(df):
     df['MACD'] = df['DIF'].ewm(span=9, adjust=False).mean()
     df['OSC'] = df['DIF'] - df['MACD']
     
-    # 布林通道與月線 (20MA)
+    # 布林通道與均線防線 (5MA 短線停利, 20MA 波段防守)
+    df['MA5'] = df['Close'].rolling(window=5).mean()  # 新增 5日線(飆股停利線)
     df['MA20'] = df['Close'].rolling(window=20).mean()
     df['STD20'] = df['Close'].rolling(window=20).std()
     df['Upper_Band'] = df['MA20'] + 2 * df['STD20']
-    df['Lower_Band'] = df['MA20'] - 2 * df['STD20']
     
     return df
 
@@ -87,11 +84,16 @@ def run_sniper_scan():
             prev_osc, curr_osc = df['OSC'].iloc[-2], df['OSC'].iloc[-1]
             
             curr_upper = df['Upper_Band'].iloc[-1]
+            
+            prev_ma5 = df['MA5'].iloc[-2]
+            curr_ma5 = df['MA5'].iloc[-1]
+            
             prev_ma20 = df['MA20'].iloc[-2]
             curr_ma20 = df['MA20'].iloc[-1]
             
             bullish_signals = [] # 多方攻擊
-            bearish_signals = [] # 空方撤退
+            profit_signals = []  # 高檔極限停利 (賣在相近最高點)
+            bearish_signals = [] # 空方撤退 (波段棄守)
             
             # 🟢 攻擊訊號 (起漲偵測)
             if prev_k < prev_d and curr_k > curr_d: 
@@ -101,21 +103,29 @@ def run_sniper_scan():
             if curr_close > curr_upper: 
                 bullish_signals.append(f"🔥 突破布林上軌 ({curr_upper:.1f})")
                 
-            # 🔴 撤退訊號 (轉弱與破線偵測)
+            # 💰 高檔極限停利 (賣在相近最高點)
+            if prev_k >= 80 and curr_k < 80:
+                profit_signals.append(f"💰 KD 高檔過熱反轉 (K值自 80 以上跌落)")
+            if prev_close >= prev_ma5 and curr_close < curr_ma5:
+                profit_signals.append(f"💰 跌破極短線 5MA ({curr_ma5:.1f}) - 飆漲慣性打破")
+                
+            # 🔴 波段撤退訊號 (轉弱與破線偵測)
             if prev_close >= prev_ma20 and curr_close < curr_ma20:
                 bearish_signals.append(f"📉 跌破生命月線 (20MA: {curr_ma20:.1f})")
-            if prev_k > prev_d and curr_k < curr_d:
+            if prev_k > prev_d and curr_k < curr_d and curr_k < 80: # 排除掉上面的高檔反轉
                 bearish_signals.append(f"💀 KD 死亡交叉 (K={curr_k:.1f})")
             if prev_osc >= 0 and curr_osc < 0:
                 bearish_signals.append(f"🩸 MACD 柱狀體翻綠 (動能轉弱)")
                 
-            # 如果有任何訊號觸發，打包成訊息
-            if bullish_signals or bearish_signals:
+            # 打包訊息
+            if bullish_signals or profit_signals or bearish_signals:
                 msg = f"🎯 {name} ({ticker.replace('.TW', '')})\n🔸 最新收盤: {curr_close:.2f}\n"
                 if bullish_signals:
                     msg += "🟢 【攻擊鎖定】\n - " + "\n - ".join(bullish_signals) + "\n"
+                if profit_signals:
+                    msg += "💰 【極限停利入袋】(賣在相近最高點)\n - " + "\n - ".join(profit_signals) + "\n"
                 if bearish_signals:
-                    msg += "🔴 【撤退警報】\n - " + "\n - ".join(bearish_signals) + "\n"
+                    msg += "🔴 【波段撤退警報】\n - " + "\n - ".join(bearish_signals) + "\n"
                 alerts.append(msg.strip())
                 
         except Exception as e:
@@ -123,10 +133,8 @@ def run_sniper_scan():
             
     if alerts:
         send_line_message(f"🚨【狙擊手戰況通報】\n掃描時間: {today_str}\n\n" + "\n\n".join(alerts))
-        print("✅ 發現戰況變動！已發送 LINE 警報。")
     else:
-        send_line_message(f"📡【狙擊手回報】\n掃描時間: {today_str}\n清單內無標的觸發攻守訊號，繼續潛伏。")
-        print("⏸️ 掃描完畢，已回報指揮官。")
+        send_line_message(f"📡【狙擊手回報】\n掃描時間: {today_str}\n無標的觸發訊號，繼續潛伏。")
 
 if __name__ == "__main__":
     run_sniper_scan()
