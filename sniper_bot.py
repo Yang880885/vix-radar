@@ -9,7 +9,6 @@ import pytz
 # ==========================================
 # ⚙️ 系統設定區 (最高資安防護)
 # ==========================================
-# 透過環境變數安全讀取 GitHub Secrets，程式碼裡完全沒有明碼！
 LINE_TOKEN = os.environ.get("LINE_TOKEN")
 LINE_USER_ID = os.environ.get("LINE_USER_ID")
 
@@ -21,7 +20,7 @@ if not LINE_TOKEN or not LINE_USER_ID:
 WATCHLIST = {
     "2330.TW": "台積電",
     "2317.TW": "鴻海",
-    "2603.TW": "長榮",
+    "2485.TW": "兆赫",
     "4960.TW": "誠美材",
     "3013.TW": "晟銘電",
     "0050.TW": "元大台灣50",
@@ -32,7 +31,7 @@ WATCHLIST = {
 }
 
 # ==========================================
-# 📡 戰術運算與通訊區 (以下不需更動)
+# 📡 戰術運算與通訊區
 # ==========================================
 def send_line_message(message):
     url = "https://api.line.me/v2/bot/message/push"
@@ -41,27 +40,32 @@ def send_line_message(message):
     requests.post(url, headers=headers, data=json.dumps(payload))
 
 def calculate_indicators(df):
+    # KD
     low_min = df['Low'].rolling(window=9, min_periods=1).min()
     high_max = df['High'].rolling(window=9, min_periods=1).max()
     df['RSV'] = 100 * (df['Close'] - low_min) / (high_max - low_min)
     df['K'] = df['RSV'].ewm(com=2, adjust=False).mean()
     df['D'] = df['K'].ewm(com=2, adjust=False).mean()
     
+    # MACD
     ema12 = df['Close'].ewm(span=12, adjust=False).mean()
     ema26 = df['Close'].ewm(span=26, adjust=False).mean()
     df['DIF'] = ema12 - ema26
     df['MACD'] = df['DIF'].ewm(span=9, adjust=False).mean()
     df['OSC'] = df['DIF'] - df['MACD']
     
+    # 布林通道與月線 (20MA)
     df['MA20'] = df['Close'].rolling(window=20).mean()
     df['STD20'] = df['Close'].rolling(window=20).std()
     df['Upper_Band'] = df['MA20'] + 2 * df['STD20']
+    df['Lower_Band'] = df['MA20'] - 2 * df['STD20']
+    
     return df
 
 def run_sniper_scan():
     tz = pytz.timezone('Asia/Taipei')
     today_str = datetime.now(tz).strftime('%Y-%m-%d %H:%M')
-    print(f"🔍 [{today_str}] 啟動狙擊掃描...")
+    print(f"🔍 [{today_str}] 啟動攻守雙向掃描...")
     
     alerts = []
     
@@ -72,29 +76,56 @@ def run_sniper_scan():
             if len(df) < 30: continue
                 
             df = calculate_indicators(df)
+            
+            # 取得昨日與今日數值
             curr_close = df['Close'].iloc[-1]
+            prev_close = df['Close'].iloc[-2]
+            
             prev_k, curr_k = df['K'].iloc[-2], df['K'].iloc[-1]
             prev_d, curr_d = df['D'].iloc[-2], df['D'].iloc[-1]
-            prev_osc, curr_osc = df['OSC'].iloc[-2], df['OSC'].iloc[-1]
-            curr_upper = df['Upper_Band'].iloc[-1]
             
-            signals = []
-            if prev_k < prev_d and curr_k > curr_d: signals.append(f"✨ KD 黃金交叉 (K={curr_k:.1f})")
-            if prev_osc <= 0 and curr_osc > 0: signals.append(f"📈 MACD 柱狀體翻紅")
-            if curr_close > curr_upper: signals.append(f"🔥 突破布林上軌 ({curr_upper:.1f})")
+            prev_osc, curr_osc = df['OSC'].iloc[-2], df['OSC'].iloc[-1]
+            
+            curr_upper = df['Upper_Band'].iloc[-1]
+            prev_ma20 = df['MA20'].iloc[-2]
+            curr_ma20 = df['MA20'].iloc[-1]
+            
+            bullish_signals = [] # 多方攻擊
+            bearish_signals = [] # 空方撤退
+            
+            # 🟢 攻擊訊號 (起漲偵測)
+            if prev_k < prev_d and curr_k > curr_d: 
+                bullish_signals.append(f"✨ KD 黃金交叉 (K={curr_k:.1f})")
+            if prev_osc <= 0 and curr_osc > 0: 
+                bullish_signals.append(f"📈 MACD 柱狀體翻紅")
+            if curr_close > curr_upper: 
+                bullish_signals.append(f"🔥 突破布林上軌 ({curr_upper:.1f})")
                 
-            if signals:
-                msg = f"🎯 {name} ({ticker.replace('.TW', '')})\n🔸 最新收盤: {curr_close:.2f}\n🔸 觸發訊號:\n - " + "\n - ".join(signals)
-                alerts.append(msg)
+            # 🔴 撤退訊號 (轉弱與破線偵測)
+            if prev_close >= prev_ma20 and curr_close < curr_ma20:
+                bearish_signals.append(f"📉 跌破生命月線 (20MA: {curr_ma20:.1f})")
+            if prev_k > prev_d and curr_k < curr_d:
+                bearish_signals.append(f"💀 KD 死亡交叉 (K={curr_k:.1f})")
+            if prev_osc >= 0 and curr_osc < 0:
+                bearish_signals.append(f"🩸 MACD 柱狀體翻綠 (動能轉弱)")
+                
+            # 如果有任何訊號觸發，打包成訊息
+            if bullish_signals or bearish_signals:
+                msg = f"🎯 {name} ({ticker.replace('.TW', '')})\n🔸 最新收盤: {curr_close:.2f}\n"
+                if bullish_signals:
+                    msg += "🟢 【攻擊鎖定】\n - " + "\n - ".join(bullish_signals) + "\n"
+                if bearish_signals:
+                    msg += "🔴 【撤退警報】\n - " + "\n - ".join(bearish_signals) + "\n"
+                alerts.append(msg.strip())
+                
         except Exception as e:
             pass
             
     if alerts:
-        send_line_message(f"🚨【狙擊手鎖定通報】\n掃描時間: {today_str}\n\n" + "\n\n".join(alerts))
-        print("✅ 發現獵物！已發送 LINE 警報。")
+        send_line_message(f"🚨【狙擊手戰況通報】\n掃描時間: {today_str}\n\n" + "\n\n".join(alerts))
+        print("✅ 發現戰況變動！已發送 LINE 警報。")
     else:
-        # 為了測試方便，如果沒有獵物，我們也發一條靜默通知，確認系統有在跑
-        send_line_message(f"📡【狙擊手回報】\n掃描時間: {today_str}\n清單內無標的觸發攻擊訊號，繼續潛伏。")
+        send_line_message(f"📡【狙擊手回報】\n掃描時間: {today_str}\n清單內無標的觸發攻守訊號，繼續潛伏。")
         print("⏸️ 掃描完畢，已回報指揮官。")
 
 if __name__ == "__main__":
