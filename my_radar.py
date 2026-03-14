@@ -189,7 +189,7 @@ with u3:
 st.divider()
 
 # --- 🔭 戰區 5：歷史回測 ---
-st.markdown("### 🔭 戰區 5：鑑古知今")
+st.markdown("### 🔭 戰區 5：歷史數據")
 hist_data = yf.download(["^VIX", "^VIX3M", "^TWII", "TWD=X"], period="6mo")['Close'].dropna(how='all')
 hist_data = hist_data[hist_data.index.dayofweek < 5].ffill()
 
