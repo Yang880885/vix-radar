@@ -6,9 +6,9 @@ import json
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-st.set_page_config(page_title="獵人戰情室：波段導航儀 5.7", layout="wide")
+st.set_page_config(page_title="獵人戰情室：波段導航儀 5.8", layout="wide")
 st.title("🎯 台股波段轉折導航儀")
-st.caption("雷達 5.7 終極版 | 週末抗干擾 + 戰術動作全歸位")
+st.caption("雷達 5.8 最終版 | 週末抗干擾 + 動作歸位 + 通訊測試修復")
 
 # --- 側邊欄：純粹的通訊引擎 ---
 st.sidebar.header("🤖 LINE 警報引擎")
@@ -25,11 +25,24 @@ def send_line_message(message, token, user_id):
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
     payload = {"to": user_id, "messages": [{"type": "text", "text": message}]}
     try:
-        requests.post(url, headers=headers, data=json.dumps(payload))
+        response = requests.post(url, headers=headers, data=json.dumps(payload))
+        if response.status_code == 200:
+            return True
     except:
         pass
+    return False
 
-# --- 抓取所有戰區資料 (🔥 徹底剔除週末幽靈數據) ---
+# 🔥 戰情室把誤刪的「測試發射按鈕」加回來了！
+if st.sidebar.button("發送測試警報 🚀"):
+    if line_token and line_user_id:
+        if send_line_message("✅ 【戰情室廣播】指揮官，雷達 5.8 系統測試正常！通訊管道 100% 暢通！", line_token, line_user_id):
+            st.sidebar.success("✅ 測試警報已發射！請檢查 LINE。")
+        else:
+            st.sidebar.error("❌ 發送失敗，請檢查金鑰設定。")
+    else:
+        st.sidebar.warning("⚠️ 尚未設定金鑰。")
+
+# --- 抓取所有戰區資料 (徹底剔除週末幽靈數據) ---
 trad_tickers = ["^VIX", "^VIX3M", "^VVIX", "^SKEW", "^VIX9D", "^SOX", "^NDX", "TSM", "TWD=X", "^TNX"]
 trad_data = yf.download(trad_tickers, period="10d")['Close'].dropna(how='all')
 trad_data = trad_data[trad_data.index.dayofweek < 5].ffill()
@@ -99,6 +112,14 @@ if trad_latest['^SKEW'] > 140: score -= 2
 if latest_rsi > 70: score -= 2
 if twd_latest > twd_ma5: score -= 1
 if tnx_latest > 4.5: score -= 1
+
+# --- 自動警報觸發邏輯 ---
+if score >= 4 and line_token and line_user_id:
+    alert_msg = f"\n🚨【獵人紅色警報】\n🟢 強烈買進訊號！\n自動戰力評估高達 {score} 分！絕佳抄底買點已浮現，請立刻開啟雷達確認指令！"
+    send_line_message(alert_msg, line_token, line_user_id)
+elif score <= -3 and line_token and line_user_id:
+    alert_msg = f"\n🚨【獵人紅色警報】\n🔴 極度危險訊號！\n空方戰力高達 {abs(score)} 分！系統偵測到多重暴跌風險，請立刻確認避險部位！"
+    send_line_message(alert_msg, line_token, line_user_id)
 
 # --- 🏆 頂部：綜合決策計分板 ---
 st.markdown("## 🧠 AI 戰術總分")
@@ -189,7 +210,7 @@ with u3:
 st.divider()
 
 # --- 🔭 戰區 5：歷史回測 ---
-st.markdown("### 🔭 戰區 5：歷史數據")
+st.markdown("### 🔭 戰區 5：歷史恐慌轉折")
 hist_data = yf.download(["^VIX", "^VIX3M", "^TWII", "TWD=X"], period="6mo")['Close'].dropna(how='all')
 hist_data = hist_data[hist_data.index.dayofweek < 5].ffill()
 
