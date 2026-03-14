@@ -11,10 +11,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4  # 👈 這裡升級成最新的 v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5  # 👈 這裡升級成最新的 v5
         with:
           python-version: '3.10'
 
@@ -24,7 +24,6 @@ jobs:
           pip install yfinance pandas requests pytz
 
       - name: Run Sniper Bot
-        # 這裡非常重要！把 GitHub Secrets 傳入 Python 程式
         env:
           LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
