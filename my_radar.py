@@ -44,8 +44,9 @@ if st.sidebar.button("發送測試警報 🚀"):
 
 # --- 抓取所有戰區資料 (徹底剔除週末幽靈數據) ---
 trad_tickers = ["^VIX", "^VIX3M", "^VVIX", "^SKEW", "^VIX9D", "^SOX", "^NDX", "TSM", "TWD=X", "^TNX"]
-trad_data = yf.download(trad_tickers, period="10d")['Close'].dropna(how='all')
-trad_data = trad_data[trad_data.index.dayofweek < 5].ffill()
+# 💡 關鍵修正 1：這裡拿掉 .ffill()，保留原汁原味的 NaN，我們後面再獨立抓取
+trad_data_raw = yf.download(trad_tickers, period="10d")['Close'].dropna(how='all')
+trad_data = trad_data_raw[trad_data_raw.index.dayofweek < 5]
 
 btc_data = yf.download("BTC-USD", period="10d")['Close'].dropna()
 
@@ -56,32 +57,44 @@ twii_data = yf.download("^TWII", period="2mo").dropna(how='all')
 twii_data = twii_data[twii_data.index.dayofweek < 5]
 
 # --- 數據計算區 ---
-trad_latest = trad_data.iloc[-1]
-trad_prev = trad_data.iloc[-2]
+# 💡 關鍵修正 2：建立字典，獨立抓取每個標的的「最後一天」與「前一天」有效數據
+t_latest = {}
+t_prev = {}
+for col in trad_data.columns:
+    valid_series = trad_data[col].dropna() # 針對每個標的獨立排除空值
+    if len(valid_series) >= 2:
+        t_latest[col] = float(valid_series.iloc[-1])
+        t_prev[col] = float(valid_series.iloc[-2])
+    else:
+        t_latest[col], t_prev[col] = 0.0001, 0.0001 # 防呆避免除以零
+
 btc_latest = float(btc_data.iloc[-1])
 btc_prev = float(btc_data.iloc[-2])
 
-ratio_vix_vix3m = trad_latest['^VIX'] / trad_latest['^VIX3M']
-prev_ratio = trad_prev['^VIX'] / trad_prev['^VIX3M']
+# 以下變數改用 t_latest 和 t_prev 來計算
+ratio_vix_vix3m = t_latest['^VIX'] / t_latest['^VIX3M']
+prev_ratio = t_prev['^VIX'] / t_prev['^VIX3M']
 ratio_delta = ratio_vix_vix3m - prev_ratio
 
-diff_vix9d_vix = trad_latest['^VIX9D'] - trad_latest['^VIX']
-prev_diff = trad_prev['^VIX9D'] - trad_prev['^VIX']
+diff_vix9d_vix = t_latest['^VIX9D'] - t_latest['^VIX']
+prev_diff = t_prev['^VIX9D'] - t_prev['^VIX']
 diff_delta = diff_vix9d_vix - prev_diff
 
-vvix_delta = trad_latest['^VVIX'] - trad_prev['^VVIX']
-skew_delta = trad_latest['^SKEW'] - trad_prev['^SKEW']
+vvix_delta = t_latest['^VVIX'] - t_prev['^VVIX']
+skew_delta = t_latest['^SKEW'] - t_prev['^SKEW']
 
-sox_pct = ((trad_latest['^SOX'] / trad_prev['^SOX']) - 1) * 100
-ndx_pct = ((trad_latest['^NDX'] / trad_prev['^NDX']) - 1) * 100
-tsm_pct = ((trad_latest['TSM'] / trad_prev['TSM']) - 1) * 100
+sox_pct = ((t_latest['^SOX'] / t_prev['^SOX']) - 1) * 100
+ndx_pct = ((t_latest['^NDX'] / t_prev['^NDX']) - 1) * 100
+tsm_pct = ((t_latest['TSM'] / t_prev['TSM']) - 1) * 100
 
-twd_latest = trad_latest['TWD=X']
-twd_delta = twd_latest - trad_prev['TWD=X']
-twd_ma5 = trad_data['TWD=X'].tail(5).mean()
+twd_latest = t_latest['TWD=X']
+twd_delta = twd_latest - t_prev['TWD=X']
+twd_ma5 = trad_data['TWD=X'].dropna().tail(5).mean()
 
-tnx_latest = trad_latest['^TNX']
-tnx_delta = tnx_latest - trad_prev['^TNX']
+tnx_latest = t_latest['^TNX']
+tnx_delta = tnx_latest - t_prev['^TNX']
+
+btc_pct = ((btc_latest / btc_prev) - 1) * 100
 
 btc_pct = ((btc_latest / btc_prev) - 1) * 100
 
