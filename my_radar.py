@@ -6,9 +6,9 @@ import json
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-st.set_page_config(page_title="獵人戰情室：波段導航儀 5.8.1", layout="wide")
+st.set_page_config(page_title="獵人戰情室：波段導航儀 5.8.2", layout="wide")
 st.title("🎯 台股波段轉折導航儀")
-st.caption("雷達 5.8.1 裝甲強化版 | 盤中斷線修復 + 獨立洗價引擎")
+st.caption("雷達 5.8.2 完全體 | 盤中斷線裝甲 + 戰術動作全歸位")
 
 # --- 側邊欄：純粹的通訊引擎 ---
 st.sidebar.header("🤖 LINE 警報引擎")
@@ -31,21 +31,18 @@ def send_line_message(message, token, user_id):
 
 if st.sidebar.button("發送測試警報 🚀"):
     if line_token and line_user_id:
-        send_line_message("✅ 【戰情室廣播】指揮官，雷達 5.8.1 裝甲強化版測試正常！", line_token, line_user_id)
+        send_line_message("✅ 【戰情室廣播】指揮官，雷達 5.8.2 完全體測試正常！", line_token, line_user_id)
         st.sidebar.success("✅ 測試警報已發射！")
 
 # ==========================================
 # 🔥 裝甲強化：獨立抓取，防禦 Yahoo 斷線
 # ==========================================
-
-# 1. 傳統資產 (美股/總經)
 trad_tickers = ["^VIX", "^VIX3M", "^VVIX", "^SKEW", "^VIX9D", "^SOX", "^NDX", "TSM", "TWD=X", "^TNX"]
 trad_data = yf.download(trad_tickers, period="10d")['Close'].dropna(how='all')
 trad_data = trad_data[trad_data.index.dayofweek < 5].ffill()
 
 btc_data = yf.Ticker("BTC-USD").history(period="10d")['Close'].dropna()
 
-# 2. 台股與櫃買 (⚠️ 改用 Ticker history 獨立抓取，避免互相干擾導致 KeyError)
 twii_df = yf.Ticker("^TWII").history(period="2mo").dropna(how='all')
 twii_df = twii_df[twii_df.index.dayofweek < 5].ffill()
 
@@ -62,7 +59,6 @@ btc_latest = float(btc_data.iloc[-1])
 btc_prev = float(btc_data.iloc[-2])
 btc_pct = ((btc_latest / btc_prev) - 1) * 100
 
-# 防呆機制：確保某個美股代號消失時，不會引發當機
 def get_safe_val(ticker):
     try: return trad_latest[ticker], trad_prev[ticker]
     except: return 0.0, 0.0
@@ -99,7 +95,6 @@ except: twd_ma5 = twd_l
 tnx_l, tnx_p = get_safe_val('^TNX')
 tnx_delta = tnx_l - tnx_p
 
-# ⚠️ 台股與櫃買計算 (加上長度防護，避免 Yahoo 沒給資料)
 if len(twii_df) >= 2:
     twii_pct = ((twii_df['Close'].iloc[-1] / twii_df['Close'].iloc[-2]) - 1) * 100
     tw_open, tw_close = float(twii_df['Open'].iloc[-1]), float(twii_df['Close'].iloc[-1])
@@ -141,7 +136,7 @@ if tnx_l > 4.5: score -= 1
 # 🏆 頂部：綜合決策計分板
 # ==========================================
 st.markdown("## 🧠 AI 戰術總分")
-if score >= 4: st.success(f"### 🟢 強烈買進 ({score} 分)\n**🎯 總部指令**：天時地利齊聚！請鎖定強勢 ETF 分批重倉！")
+if score >= 4: st.success(f"### 🟢 強烈買進 ({score} 分)\n**🎯 總部指令**：天時地利齊聚！血流成河中的絕佳買點，請鎖定強勢 ETF 分批重倉！")
 elif score >= 1: st.info(f"### 🟡 偏多震盪 ({score} 分)\n**🎯 總部指令**：環境偏樂觀，可小資金試單，嚴防假突破。")
 elif score <= -3: st.error(f"### 🔴 極度危險 ({score} 分)\n**🎯 總部指令**：空襲警報！外資撤退加風險飆升，千萬不可接刀。")
 else: st.warning(f"### ⚪ 多空交戰 ({score} 分)\n**🎯 總部指令**：多空訊號抵銷，市場尋找方向，耐心等待。")
@@ -153,31 +148,62 @@ st.markdown("### 📈 戰區 1：台股結構")
 t1, t2, t3 = st.columns(3)
 with t1:
     st.metric(label="大盤 RSI", value=f"{latest_rsi:.1f}", delta=f"{rsi_delta:.1f}")
+    if latest_rsi < 30: st.error("🚨 **嚴重超賣**\n\n🎯 **動作**: 準備搶V轉反彈")
+    elif latest_rsi > 70: st.warning("⚠️ **高檔過熱**\n\n🎯 **動作**: 勿追高，準備停利")
+    else: st.success("✅ **位階適中**\n\n🎯 **動作**: 依個別強勢股操作")
 with t2:
-    st.metric(label="主力護盤", value="長下影線" if is_long_lower_shadow else "無", delta="強力支撐" if is_long_lower_shadow else "一般", delta_color="off")
+    if is_long_lower_shadow:
+        st.metric(label="主力護盤", value="長下影線", delta="強力支撐", delta_color="off")
+        st.error("🎯 **洗盤結束**\n\n🎯 **動作**: 打出 30% 資金抄底")
+    else:
+        st.metric(label="主力護盤", value="無", delta="一般", delta_color="off")
+        st.success("✅ **無極端洗盤**\n\n🎯 **動作**: 無反轉訊號，耐心等待")
 with t3:
-    # 確保櫃買有資料，如果 Yahoo 斷線就顯示 0
     twoii_val = twoii_df['Close'].iloc[-1] if len(twoii_df) > 0 else 0.0
     st.metric(label="櫃買指數", value=f"{twoii_val:.2f}", delta=f"{twoii_pct:.2f}%")
+    if spread > 1.0 and twii_pct > 0: st.error("🚨 **嚴重拉積盤**\n\n🎯 **動作**: 避開中小型與一般ETF")
+    elif twoii_pct > twii_pct and twoii_pct > 0: st.success("🔥 **內資噴發**\n\n🎯 **動作**: 積極佈局中小型ETF")
+    else: st.info("⚖️ **結構同步**\n\n🎯 **動作**: 依大盤趨勢操作")
 
 st.divider()
 
 # 🌐 戰區 2：恐慌波動
 st.markdown("### 🌐 戰區 2：恐慌波動 (⚠️紅向上=危險)")
 c1, c2, c3, c4 = st.columns(4)
-with c1: st.metric("VIX 比值", f"{ratio_vix_vix3m:.2f}", delta=f"{ratio_delta:.2f}", delta_color="inverse")
-with c2: st.metric("VVIX 避險", f"{vvix_l:.1f}", delta=f"{vvix_delta:.1f}", delta_color="inverse")
-with c3: st.metric("SKEW 尾部", f"{skew_l:.1f}", delta=f"{skew_delta:.1f}", delta_color="inverse")
-with c4: st.metric("VIX 乖離", f"{diff_vix9d_vix:.2f}", delta=f"{diff_delta:.2f}", delta_color="inverse")
+with c1:
+    st.metric("VIX 比值", f"{ratio_vix_vix3m:.2f}", delta=f"{ratio_delta:.2f}", delta_color="inverse")
+    if ratio_vix_vix3m > 1: st.error("🚨 **逆價差爆發**\n\n🎯 準備抄底")
+    else: st.success("✅ **正價差**\n\n🎯 抱緊多單")
+with c2:
+    st.metric("VVIX 避險", f"{vvix_l:.1f}", delta=f"{vvix_delta:.1f}", delta_color="inverse")
+    if vvix_l > 110: st.warning("⚠️ **大戶避險**\n\n🎯 拉高停利點")
+    else: st.success("✅ **情緒正常**\n\n🎯 按兵不動")
+with c3:
+    st.metric("SKEW 尾部", f"{skew_l:.1f}", delta=f"{skew_delta:.1f}", delta_color="inverse")
+    if skew_l > 140: st.error("💣 **黑天鵝預警**\n\n🎯 鎖死現金避險")
+    else: st.success("✅ **風險低**\n\n🎯 維持正常配置")
+with c4:
+    st.metric("VIX 乖離", f"{diff_vix9d_vix:.2f}", delta=f"{diff_delta:.2f}", delta_color="inverse")
+    if diff_vix9d_vix > 5: st.error("🔥 **情緒超殺**\n\n🎯 隨時報復性V轉")
+    else: st.success("✅ **無異常**\n\n🎯 不隨意短線進出")
 
 st.divider()
 
 # 💸 戰區 3：資金風險
 st.markdown("### 💸 戰區 3：資金風險 (⚠️紅向上=撤退)")
 f1, f2, f3 = st.columns(3)
-with f1: st.metric("台幣匯率", f"{twd_l:.2f}", delta=f"{twd_delta:.2f}", delta_color="inverse")
-with f2: st.metric("美債殖利率", f"{tnx_l:.2f}%", delta=f"{tnx_delta:.2f}%", delta_color="inverse")
-with f3: st.metric("比特幣(USD)", f"{btc_latest:,.0f}", f"{btc_pct:.2f}%")
+with f1:
+    st.metric("台幣匯率", f"{twd_l:.2f}", delta=f"{twd_delta:.2f}", delta_color="inverse")
+    if twd_l > twd_ma5: st.warning("⚠️ **台幣貶值**\n\n🎯 暫緩權值股買進")
+    else: st.success("✅ **熱錢流入**\n\n🎯 有利多頭佈局")
+with f2:
+    st.metric("美債殖利率", f"{tnx_l:.2f}%", delta=f"{tnx_delta:.2f}%", delta_color="inverse")
+    if tnx_l > 4.5: st.error("🚨 **成本過高**\n\n🎯 避開高本益比電子股")
+    else: st.success("✅ **資金寬鬆**\n\n🎯 有利科技半導體")
+with f3:
+    st.metric("比特幣(USD)", f"{btc_latest:,.0f}", f"{btc_pct:.2f}%")
+    if btc_pct < -5.0: st.error("💣 **幣圈暴跌**\n\n🎯 嚴控股市資金水位")
+    else: st.success("✅ **投機穩定**\n\n🎯 維持操作紀律")
 
 st.divider()
 
