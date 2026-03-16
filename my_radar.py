@@ -6,9 +6,9 @@ import json
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-st.set_page_config(page_title="獵人戰情室：波段導航儀 5.8", layout="wide")
+st.set_page_config(page_title="獵人戰情室：波段導航儀 5.8.1", layout="wide")
 st.title("🎯 台股波段轉折導航儀")
-st.caption("雷達 5.8 修復版 | 週末抗干擾 + 動作歸位 + 通訊測試修復")
+st.caption("雷達 5.8.1 最終修復版 | 徹底解決 Yahoo API 櫃買報價延遲與 0% 幽靈數據")
 
 # --- 側邊欄：純粹的通訊引擎 ---
 st.sidebar.header("🤖 LINE 警報引擎")
@@ -32,44 +32,55 @@ def send_line_message(message, token, user_id):
         pass
     return False
 
-# 🔥 戰情室把誤刪的「測試發射按鈕」加回來了！
 if st.sidebar.button("發送測試警報 🚀"):
     if line_token and line_user_id:
-        if send_line_message("✅ 【戰情室廣播】指揮官，雷達 5.8 系統測試正常！通訊管道 100% 暢通！", line_token, line_user_id):
+        if send_line_message("✅ 【戰情室廣播】指揮官，雷達 5.8.1 系統測試正常！通訊管道 100% 暢通！", line_token, line_user_id):
             st.sidebar.success("✅ 測試警報已發射！請檢查 LINE。")
         else:
             st.sidebar.error("❌ 發送失敗，請檢查金鑰設定。")
     else:
         st.sidebar.warning("⚠️ 尚未設定金鑰。")
 
-# --- 抓取所有戰區資料 (徹底剔除週末幽靈數據) ---
+# --- 抓取所有戰區資料 (徹底剔除週末與延遲幽靈數據) ---
 trad_tickers = ["^VIX", "^VIX3M", "^VVIX", "^SKEW", "^VIX9D", "^SOX", "^NDX", "TSM", "TWD=X", "^TNX"]
-# 拿掉 .ffill()，保留原汁原味的 NaN
 trad_data_raw = yf.download(trad_tickers, period="10d")['Close'].dropna(how='all')
 trad_data = trad_data_raw[trad_data_raw.index.dayofweek < 5]
 
 btc_data = yf.download("BTC-USD", period="10d")['Close'].dropna()
 
 tw_tickers = ["^TWII", "^TWOII"]
-tw_data = yf.download(tw_tickers, period="2mo")['Close'].dropna(how='all')
-tw_data = tw_data[tw_data.index.dayofweek < 5].ffill()
+# 💡 修正點 1：拿掉台股資料的 .ffill()，保留 NaN 讓後面獨立計算
+tw_data_raw = yf.download(tw_tickers, period="2mo")['Close'].dropna(how='all')
+tw_data = tw_data_raw[tw_data_raw.index.dayofweek < 5]
+
 twii_data = yf.download("^TWII", period="2mo").dropna(how='all')
 twii_data = twii_data[twii_data.index.dayofweek < 5]
 
 # --- 數據計算區 ---
-# 建立字典，獨立抓取每個標的的「最後一天」與「前一天」有效數據
+# 建立字典，獨立抓取美股每個標的的「最後一天」與「前一天」有效數據
 t_latest = {}
 t_prev = {}
 for col in trad_data.columns:
-    valid_series = trad_data[col].dropna() # 針對每個標的獨立排除空值
+    valid_series = trad_data[col].dropna()
     if len(valid_series) >= 2:
         t_latest[col] = float(valid_series.iloc[-1])
         t_prev[col] = float(valid_series.iloc[-2])
     else:
-        t_latest[col], t_prev[col] = 0.0001, 0.0001 # 防呆避免除以零
+        t_latest[col], t_prev[col] = 0.0001, 0.0001
 
 btc_latest = float(btc_data.iloc[-1])
 btc_prev = float(btc_data.iloc[-2])
+
+# 💡 修正點 2：建立字典，獨立抓取台股（加權、櫃買）的有效數據，徹底解決報價時間差
+tw_latest = {}
+tw_prev = {}
+for col in tw_data.columns:
+    valid_series = tw_data[col].dropna()
+    if len(valid_series) >= 2:
+        tw_latest[col] = float(valid_series.iloc[-1])
+        tw_prev[col] = float(valid_series.iloc[-2])
+    else:
+        tw_latest[col], tw_prev[col] = 0.0001, 0.0001
 
 ratio_vix_vix3m = t_latest['^VIX'] / t_latest['^VIX3M']
 prev_ratio = t_prev['^VIX'] / t_prev['^VIX3M']
@@ -95,8 +106,9 @@ tnx_delta = tnx_latest - t_prev['^TNX']
 
 btc_pct = ((btc_latest / btc_prev) - 1) * 100
 
-twii_pct = ((tw_data['^TWII'].iloc[-1] / tw_data['^TWII'].iloc[-2]) - 1) * 100
-twoii_pct = ((tw_data['^TWOII'].iloc[-1] / tw_data['^TWOII'].iloc[-2]) - 1) * 100
+# 💡 修正點 3：使用新的 tw_latest 字典來計算台股與櫃買漲跌幅
+twii_pct = ((tw_latest['^TWII'] / tw_prev['^TWII']) - 1) * 100
+twoii_pct = ((tw_latest['^TWOII'] / tw_prev['^TWOII']) - 1) * 100
 spread = twii_pct - twoii_pct 
 
 delta = twii_data['Close'].diff()
@@ -160,7 +172,8 @@ with t2:
         st.metric(label="主力護盤", value="無", delta="一般", delta_color="off")
         st.success("✅ **無極端洗盤**\n\n🎯 **動作**: 無反轉訊號，耐心等待")
 with t3:
-    st.metric(label="櫃買指數", value=f"{tw_data['^TWOII'].iloc[-1]:.2f}", delta=f"{twoii_pct:.2f}%")
+    # 💡 修正點 4：UI 顯示也同步改為使用新的字典變數 tw_latest['^TWOII']
+    st.metric(label="櫃買指數", value=f"{tw_latest['^TWOII']:.2f}", delta=f"{twoii_pct:.2f}%")
     if spread > 1.0 and twii_pct > 0: st.error("🚨 **嚴重拉積盤**\n\n🎯 **動作**: 避開中小型與一般ETF")
     elif twoii_pct > twii_pct and twoii_pct > 0: st.success("🔥 **內資噴發**\n\n🎯 **動作**: 積極佈局中小型ETF")
     else: st.info("⚖️ **結構同步**\n\n🎯 **動作**: 依大盤趨勢操作")
