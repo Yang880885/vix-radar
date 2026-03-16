@@ -8,7 +8,7 @@ from plotly.subplots import make_subplots
 
 st.set_page_config(page_title="獵人戰情室：波段導航儀 5.8", layout="wide")
 st.title("🎯 台股波段轉折導航儀")
-st.caption("雷達 5.8 最終版 | 週末抗干擾 + 動作歸位 + 通訊測試修復")
+st.caption("雷達 5.8 修復版 | 週末抗干擾 + 動作歸位 + 通訊測試修復")
 
 # --- 側邊欄：純粹的通訊引擎 ---
 st.sidebar.header("🤖 LINE 警報引擎")
@@ -44,7 +44,7 @@ if st.sidebar.button("發送測試警報 🚀"):
 
 # --- 抓取所有戰區資料 (徹底剔除週末幽靈數據) ---
 trad_tickers = ["^VIX", "^VIX3M", "^VVIX", "^SKEW", "^VIX9D", "^SOX", "^NDX", "TSM", "TWD=X", "^TNX"]
-# 💡 關鍵修正 1：這裡拿掉 .ffill()，保留原汁原味的 NaN，我們後面再獨立抓取
+# 拿掉 .ffill()，保留原汁原味的 NaN
 trad_data_raw = yf.download(trad_tickers, period="10d")['Close'].dropna(how='all')
 trad_data = trad_data_raw[trad_data_raw.index.dayofweek < 5]
 
@@ -57,7 +57,7 @@ twii_data = yf.download("^TWII", period="2mo").dropna(how='all')
 twii_data = twii_data[twii_data.index.dayofweek < 5]
 
 # --- 數據計算區 ---
-# 💡 關鍵修正 2：建立字典，獨立抓取每個標的的「最後一天」與「前一天」有效數據
+# 建立字典，獨立抓取每個標的的「最後一天」與「前一天」有效數據
 t_latest = {}
 t_prev = {}
 for col in trad_data.columns:
@@ -71,7 +71,6 @@ for col in trad_data.columns:
 btc_latest = float(btc_data.iloc[-1])
 btc_prev = float(btc_data.iloc[-2])
 
-# 以下變數改用 t_latest 和 t_prev 來計算
 ratio_vix_vix3m = t_latest['^VIX'] / t_latest['^VIX3M']
 prev_ratio = t_prev['^VIX'] / t_prev['^VIX3M']
 ratio_delta = ratio_vix_vix3m - prev_ratio
@@ -93,8 +92,6 @@ twd_ma5 = trad_data['TWD=X'].dropna().tail(5).mean()
 
 tnx_latest = t_latest['^TNX']
 tnx_delta = tnx_latest - t_prev['^TNX']
-
-btc_pct = ((btc_latest / btc_prev) - 1) * 100
 
 btc_pct = ((btc_latest / btc_prev) - 1) * 100
 
@@ -121,7 +118,7 @@ if ratio_vix_vix3m > 1.0: score += 3
 if latest_rsi < 30: score += 2
 if is_long_lower_shadow: score += 2
 if twd_latest < twd_ma5: score += 1
-if trad_latest['^SKEW'] > 140: score -= 2
+if t_latest['^SKEW'] > 140: score -= 2
 if latest_rsi > 70: score -= 2
 if twd_latest > twd_ma5: score -= 1
 if tnx_latest > 4.5: score -= 1
@@ -178,12 +175,12 @@ with c1:
     if ratio_vix_vix3m > 1: st.error("🚨 **逆價差爆發**\n\n🎯 準備抄底")
     else: st.success("✅ **正價差**\n\n🎯 抱緊多單")
 with c2:
-    st.metric("VVIX 避險", f"{trad_latest['^VVIX']:.1f}", delta=f"{vvix_delta:.1f}", delta_color="inverse")
-    if trad_latest['^VVIX'] > 110: st.warning("⚠️ **大戶避險**\n\n🎯 拉高停利點")
+    st.metric("VVIX 避險", f"{t_latest['^VVIX']:.1f}", delta=f"{vvix_delta:.1f}", delta_color="inverse")
+    if t_latest['^VVIX'] > 110: st.warning("⚠️ **大戶避險**\n\n🎯 拉高停利點")
     else: st.success("✅ **情緒正常**\n\n🎯 按兵不動")
 with c3:
-    st.metric("SKEW 尾部", f"{trad_latest['^SKEW']:.1f}", delta=f"{skew_delta:.1f}", delta_color="inverse")
-    if trad_latest['^SKEW'] > 140: st.error("💣 **黑天鵝預警**\n\n🎯 鎖死現金避險")
+    st.metric("SKEW 尾部", f"{t_latest['^SKEW']:.1f}", delta=f"{skew_delta:.1f}", delta_color="inverse")
+    if t_latest['^SKEW'] > 140: st.error("💣 **黑天鵝預警**\n\n🎯 鎖死現金避險")
     else: st.success("✅ **風險低**\n\n🎯 維持正常配置")
 with c4:
     st.metric("VIX 乖離", f"{diff_vix9d_vix:.2f}", delta=f"{diff_delta:.2f}", delta_color="inverse")
@@ -214,11 +211,11 @@ st.divider()
 st.markdown("### 🦅 戰區 4：美股風向")
 u1, u2, u3 = st.columns(3)
 with u1:
-    st.metric("費半指數", f"{trad_latest['^SOX']:.2f}", f"{sox_pct:.2f}%")
+    st.metric("費半指數", f"{t_latest['^SOX']:.2f}", f"{sox_pct:.2f}%")
 with u2:
-    st.metric("那斯達克", f"{trad_latest['^NDX']:.2f}", f"{ndx_pct:.2f}%")
+    st.metric("那斯達克", f"{t_latest['^NDX']:.2f}", f"{ndx_pct:.2f}%")
 with u3:
-    st.metric("台積電 ADR", f"{trad_latest['TSM']:.2f}", f"{tsm_pct:.2f}%")
+    st.metric("台積電 ADR", f"{t_latest['TSM']:.2f}", f"{tsm_pct:.2f}%")
 
 st.divider()
 
