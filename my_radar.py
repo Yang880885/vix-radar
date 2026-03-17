@@ -5,11 +5,11 @@ import requests
 import json
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from datetime import date # 💡 新增：用來獲取今天日期的套件
+from datetime import date
 
-st.set_page_config(page_title="獵人戰情室：波段導航儀 5.8.1", layout="wide")
+st.set_page_config(page_title="獵人戰情室：波段導航儀 5.8.3", layout="wide")
 st.title("🎯 台股波段轉折導航儀")
-st.caption("雷達 5.8.1 最終修復版 | 徹底解決 Yahoo API 櫃買報價延遲與 0% 幽靈數據 (附每日單發保險)")
+st.caption("雷達 5.8.3 | 內建獨立 VIX 波動率避險引擎與單發保險")
 
 # --- 側邊欄：純粹的通訊引擎 ---
 st.sidebar.header("🤖 LINE 警報引擎")
@@ -33,24 +33,21 @@ def send_line_message(message, token, user_id):
         pass
     return False
 
-# 💡 新增：這是一個加了「快取記憶」的發送器。
-# ttl=86400 代表記憶保持 24 小時。底線 _message 參數代表系統只認「訊號種類和日期」，即使分數改變也不會重複發送。
 @st.cache_data(ttl=86400, show_spinner=False)
 def trigger_daily_alert(signal_type, today_date, _message, _token, _user_id):
     send_line_message(_message, _token, _user_id)
     return True
 
 if st.sidebar.button("發送測試警報 🚀"):
-    # 測試按鈕沒有加記憶器，所以按幾次就會發幾次，方便您測試
     if line_token and line_user_id:
-        if send_line_message("✅ 【戰情室廣播】指揮官，雷達 5.8.1 系統測試正常！通訊管道 100% 暢通！", line_token, line_user_id):
+        if send_line_message("✅ 【戰情室廣播】指揮官，雷達 5.8.3 避險升級版測試正常！", line_token, line_user_id):
             st.sidebar.success("✅ 測試警報已發射！請檢查 LINE。")
         else:
             st.sidebar.error("❌ 發送失敗，請檢查金鑰設定。")
     else:
         st.sidebar.warning("⚠️ 尚未設定金鑰。")
 
-# --- 抓取所有戰區資料 (徹底剔除週末與延遲幽靈數據) ---
+# --- 抓取所有戰區資料 ---
 trad_tickers = ["^VIX", "^VIX3M", "^VVIX", "^SKEW", "^VIX9D", "^SOX", "^NDX", "TSM", "TWD=X", "^TNX"]
 trad_data_raw = yf.download(trad_tickers, period="10d")['Close'].dropna(how='all')
 trad_data = trad_data_raw[trad_data_raw.index.dayofweek < 5]
@@ -96,8 +93,11 @@ diff_vix9d_vix = t_latest['^VIX9D'] - t_latest['^VIX']
 prev_diff = t_prev['^VIX9D'] - t_prev['^VIX']
 diff_delta = diff_vix9d_vix - prev_diff
 
-vvix_delta = t_latest['^VVIX'] - t_prev['^VVIX']
-skew_delta = t_latest['^SKEW'] - t_prev['^SKEW']
+vvix_latest = t_latest['^VVIX']
+vvix_delta = vvix_latest - t_prev['^VVIX']
+
+skew_latest = t_latest['^SKEW']
+skew_delta = skew_latest - t_prev['^SKEW']
 
 sox_pct = ((t_latest['^SOX'] / t_prev['^SOX']) - 1) * 100
 ndx_pct = ((t_latest['^NDX'] / t_prev['^NDX']) - 1) * 100
@@ -130,29 +130,56 @@ body = abs(tw_open - tw_close)
 lower_shadow = min(tw_open, tw_close) - tw_low
 is_long_lower_shadow = (lower_shadow > body * 2) and (lower_shadow > (tw_high - max(tw_open, tw_close))) and (body > 0)
 
+# ==========================================
+# 🔥 核心升級：獨立 VIX 避險邏輯引擎
+# ==========================================
+hedge_trigger = False
+hedge_reasons = []
+
+if ratio_vix_vix3m > 1.0:
+    hedge_trigger = True
+    hedge_reasons.append("VIX 短期大於長期 (逆價差爆發，極度恐慌)")
+if vvix_latest > 110:
+    hedge_trigger = True
+    hedge_reasons.append(f"VVIX 異常飆高 ({vvix_latest:.1f})，大戶正瘋狂買進保險")
+if skew_latest > 140:
+    hedge_trigger = True
+    hedge_reasons.append(f"SKEW 尾部風險過高 ({skew_latest:.1f})，黑天鵝機率大增")
+
+today_str = date.today().strftime("%Y-%m-%d")
+
+# 📡 避險專屬 LINE 推播 (與一般買賣訊號獨立)
+if hedge_trigger and line_token and line_user_id:
+    reason_str = "\n".join([f"⚠️ {r}" for r in hedge_reasons])
+    hedge_msg = f"\n🛡️【獵人避險強制介入】🛡️\n系統偵測到機構級異常波動！\n\n觸發條件：\n{reason_str}\n\n🎯 總部動作建議：\n請立刻檢視多單曝險，建議逢高減碼，或買進反向 ETF (如 00632R) 進行部位保護！"
+    trigger_daily_alert("HEDGE_SIGNAL", today_str, hedge_msg, line_token, line_user_id)
+
+
+# --- 綜合決策計分 ---
 score = 0
 if ratio_vix_vix3m > 1.0: score += 3
 if latest_rsi < 30: score += 2
 if is_long_lower_shadow: score += 2
 if twd_latest < twd_ma5: score += 1
-if t_latest['^SKEW'] > 140: score -= 2
+if skew_latest > 140: score -= 2
 if latest_rsi > 70: score -= 2
 if twd_latest > twd_ma5: score -= 1
 if tnx_latest > 4.5: score -= 1
 
-# --- 自動警報觸發邏輯 (💡 已升級單發保險) ---
-today_str = date.today().strftime("%Y-%m-%d") # 取得今天的日期字串
-
+# 一般買賣訊號推播
 if score >= 4 and line_token and line_user_id:
     alert_msg = f"\n🚨【獵人紅色警報】\n🟢 強烈買進訊號！\n自動戰力評估高達 {score} 分！絕佳抄底買點已浮現，請立刻開啟雷達確認指令！"
-    # 使用記憶發送器，帶入 "BUY_SIGNAL" 和 "今天日期"
     trigger_daily_alert("BUY_SIGNAL", today_str, alert_msg, line_token, line_user_id)
 elif score <= -3 and line_token and line_user_id:
     alert_msg = f"\n🚨【獵人紅色警報】\n🔴 極度危險訊號！\n空方戰力高達 {abs(score)} 分！系統偵測到多重暴跌風險，請立刻確認避險部位！"
-    # 使用記憶發送器，帶入 "SELL_SIGNAL" 和 "今天日期"
     trigger_daily_alert("SELL_SIGNAL", today_str, alert_msg, line_token, line_user_id)
 
 # --- 🏆 頂部：綜合決策計分板 ---
+# 💡 前端 UI：如果觸發避險，在最頂部顯示強制警告橫幅
+if hedge_trigger:
+    st.error(f"### 🛡️ 系統強制避險指令生效\n目前市場波動率指標出現異常，強烈建議建立避險部位！\n**觸發原因**：{', '.join(hedge_reasons)}")
+    st.divider()
+
 st.markdown("## 🧠 AI 戰術總分")
 if score >= 4:
     st.success(f"### 🟢 強烈買進 ({score} 分)\n**🎯 總部指令**：天時地利齊聚！血流成河中的絕佳買點，請鎖定強勢 ETF 分批重倉！")
@@ -196,12 +223,12 @@ with c1:
     if ratio_vix_vix3m > 1: st.error("🚨 **逆價差爆發**\n\n🎯 準備抄底")
     else: st.success("✅ **正價差**\n\n🎯 抱緊多單")
 with c2:
-    st.metric("VVIX 避險", f"{t_latest['^VVIX']:.1f}", delta=f"{vvix_delta:.1f}", delta_color="inverse")
-    if t_latest['^VVIX'] > 110: st.warning("⚠️ **大戶避險**\n\n🎯 拉高停利點")
+    st.metric("VVIX 避險", f"{vvix_latest:.1f}", delta=f"{vvix_delta:.1f}", delta_color="inverse")
+    if vvix_latest > 110: st.warning("⚠️ **大戶避險**\n\n🎯 拉高停利點")
     else: st.success("✅ **情緒正常**\n\n🎯 按兵不動")
 with c3:
-    st.metric("SKEW 尾部", f"{t_latest['^SKEW']:.1f}", delta=f"{skew_delta:.1f}", delta_color="inverse")
-    if t_latest['^SKEW'] > 140: st.error("💣 **黑天鵝預警**\n\n🎯 鎖死現金避險")
+    st.metric("SKEW 尾部", f"{skew_latest:.1f}", delta=f"{skew_delta:.1f}", delta_color="inverse")
+    if skew_latest > 140: st.error("💣 **黑天鵝預警**\n\n🎯 鎖死現金避險")
     else: st.success("✅ **風險低**\n\n🎯 維持正常配置")
 with c4:
     st.metric("VIX 乖離", f"{diff_vix9d_vix:.2f}", delta=f"{diff_delta:.2f}", delta_color="inverse")
