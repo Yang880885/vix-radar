@@ -5,10 +5,11 @@ import requests
 import json
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from datetime import date # 💡 新增：用來獲取今天日期的套件
 
 st.set_page_config(page_title="獵人戰情室：波段導航儀 5.8.1", layout="wide")
 st.title("🎯 台股波段轉折導航儀")
-st.caption("雷達 5.8.1 最終修復版 | 徹底解決 Yahoo API 櫃買報價延遲與 0% 幽靈數據")
+st.caption("雷達 5.8.1 最終修復版 | 徹底解決 Yahoo API 櫃買報價延遲與 0% 幽靈數據 (附每日單發保險)")
 
 # --- 側邊欄：純粹的通訊引擎 ---
 st.sidebar.header("🤖 LINE 警報引擎")
@@ -32,7 +33,15 @@ def send_line_message(message, token, user_id):
         pass
     return False
 
+# 💡 新增：這是一個加了「快取記憶」的發送器。
+# ttl=86400 代表記憶保持 24 小時。底線 _message 參數代表系統只認「訊號種類和日期」，即使分數改變也不會重複發送。
+@st.cache_data(ttl=86400, show_spinner=False)
+def trigger_daily_alert(signal_type, today_date, _message, _token, _user_id):
+    send_line_message(_message, _token, _user_id)
+    return True
+
 if st.sidebar.button("發送測試警報 🚀"):
+    # 測試按鈕沒有加記憶器，所以按幾次就會發幾次，方便您測試
     if line_token and line_user_id:
         if send_line_message("✅ 【戰情室廣播】指揮官，雷達 5.8.1 系統測試正常！通訊管道 100% 暢通！", line_token, line_user_id):
             st.sidebar.success("✅ 測試警報已發射！請檢查 LINE。")
@@ -49,7 +58,6 @@ trad_data = trad_data_raw[trad_data_raw.index.dayofweek < 5]
 btc_data = yf.download("BTC-USD", period="10d")['Close'].dropna()
 
 tw_tickers = ["^TWII", "^TWOII"]
-# 💡 修正點 1：拿掉台股資料的 .ffill()，保留 NaN 讓後面獨立計算
 tw_data_raw = yf.download(tw_tickers, period="2mo")['Close'].dropna(how='all')
 tw_data = tw_data_raw[tw_data_raw.index.dayofweek < 5]
 
@@ -57,7 +65,6 @@ twii_data = yf.download("^TWII", period="2mo").dropna(how='all')
 twii_data = twii_data[twii_data.index.dayofweek < 5]
 
 # --- 數據計算區 ---
-# 建立字典，獨立抓取美股每個標的的「最後一天」與「前一天」有效數據
 t_latest = {}
 t_prev = {}
 for col in trad_data.columns:
@@ -71,7 +78,6 @@ for col in trad_data.columns:
 btc_latest = float(btc_data.iloc[-1])
 btc_prev = float(btc_data.iloc[-2])
 
-# 💡 修正點 2：建立字典，獨立抓取台股（加權、櫃買）的有效數據，徹底解決報價時間差
 tw_latest = {}
 tw_prev = {}
 for col in tw_data.columns:
@@ -106,7 +112,6 @@ tnx_delta = tnx_latest - t_prev['^TNX']
 
 btc_pct = ((btc_latest / btc_prev) - 1) * 100
 
-# 💡 修正點 3：使用新的 tw_latest 字典來計算台股與櫃買漲跌幅
 twii_pct = ((tw_latest['^TWII'] / tw_prev['^TWII']) - 1) * 100
 twoii_pct = ((tw_latest['^TWOII'] / tw_prev['^TWOII']) - 1) * 100
 spread = twii_pct - twoii_pct 
@@ -135,13 +140,17 @@ if latest_rsi > 70: score -= 2
 if twd_latest > twd_ma5: score -= 1
 if tnx_latest > 4.5: score -= 1
 
-# --- 自動警報觸發邏輯 ---
+# --- 自動警報觸發邏輯 (💡 已升級單發保險) ---
+today_str = date.today().strftime("%Y-%m-%d") # 取得今天的日期字串
+
 if score >= 4 and line_token and line_user_id:
     alert_msg = f"\n🚨【獵人紅色警報】\n🟢 強烈買進訊號！\n自動戰力評估高達 {score} 分！絕佳抄底買點已浮現，請立刻開啟雷達確認指令！"
-    send_line_message(alert_msg, line_token, line_user_id)
+    # 使用記憶發送器，帶入 "BUY_SIGNAL" 和 "今天日期"
+    trigger_daily_alert("BUY_SIGNAL", today_str, alert_msg, line_token, line_user_id)
 elif score <= -3 and line_token and line_user_id:
     alert_msg = f"\n🚨【獵人紅色警報】\n🔴 極度危險訊號！\n空方戰力高達 {abs(score)} 分！系統偵測到多重暴跌風險，請立刻確認避險部位！"
-    send_line_message(alert_msg, line_token, line_user_id)
+    # 使用記憶發送器，帶入 "SELL_SIGNAL" 和 "今天日期"
+    trigger_daily_alert("SELL_SIGNAL", today_str, alert_msg, line_token, line_user_id)
 
 # --- 🏆 頂部：綜合決策計分板 ---
 st.markdown("## 🧠 AI 戰術總分")
@@ -172,7 +181,6 @@ with t2:
         st.metric(label="主力護盤", value="無", delta="一般", delta_color="off")
         st.success("✅ **無極端洗盤**\n\n🎯 **動作**: 無反轉訊號，耐心等待")
 with t3:
-    # 💡 修正點 4：UI 顯示也同步改為使用新的字典變數 tw_latest['^TWOII']
     st.metric(label="櫃買指數", value=f"{tw_latest['^TWOII']:.2f}", delta=f"{twoii_pct:.2f}%")
     if spread > 1.0 and twii_pct > 0: st.error("🚨 **嚴重拉積盤**\n\n🎯 **動作**: 避開中小型與一般ETF")
     elif twoii_pct > twii_pct and twoii_pct > 0: st.success("🔥 **內資噴發**\n\n🎯 **動作**: 積極佈局中小型ETF")
