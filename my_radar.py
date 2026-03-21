@@ -289,3 +289,81 @@ with c_chart2:
     fig2.add_trace(go.Scatter(x=hist_data.index, y=hist_data['TWD=X'], name="匯率", line=dict(color='#00c853', dash='dot')), secondary_y=True)
     fig2.update_layout(height=350, margin=dict(l=0, r=0, t=30, b=0), hovermode="x unified", legend=dict(yanchor="bottom", y=1.02, xanchor="right", x=1))
     st.plotly_chart(fig2, use_container_width=True)
+
+import requests
+import pandas as pd
+
+class VixRadar:
+    def __init__(self, api_token=None):
+        self.api_url = "https://api.finmindtrade.com/api/v4/data"
+        self.api_token = api_token
+        self.headers = {"Authorization": f"Bearer {api_token}"} if api_token else {}
+
+    def analyze_stock(self, stock_id, target_date="2026-03-20"):
+        """
+        整合：抓取權證資料 + 計算 P/C Ratio + 給予雷達建議
+        """
+        print(f"📡 VIX-Radar 正在掃描標的：{stock_id} ...")
+        
+        # 1. 向 FinMind 請求權證成交資料
+        params = {
+            "dataset": "TaiwanStockWarrantTickInfo",
+            "data_id": stock_id,
+            "date": target_date
+        }
+        
+        try:
+            resp = requests.get(self.api_url, params=params, headers=self.headers)
+            data = resp.json().get('data', [])
+            
+            if not data:
+                return f"⚠️ 找不到 {stock_id} 在 {target_date} 的權證資料。"
+            
+            df = pd.DataFrame(data)
+            
+            # 2. 判斷認購 (Call) 或 認售 (Put)
+            # 邏輯：代號結尾是 P 為認售，其餘為認購
+            df['type'] = df['warrant_id'].apply(lambda x: 'Put' if x.endswith('P') else 'Call')
+            
+            # 3. 數據加總
+            summary = df.groupby('type')['amount'].sum()
+            call_amt = summary.get('Call', 0)
+            put_amt = summary.get('Put', 0)
+            
+            # 4. 計算 P/C Ratio (Put-Call Ratio)
+            pc_ratio = put_amt / call_amt if call_amt > 0 else 0
+            
+            # 5. 雷達綜合評估
+            status = self._get_radar_status(pc_ratio)
+            
+            return {
+                "股票代號": stock_id,
+                "分析日期": target_date,
+                "認購金額": f"{call_amt:,.0f}",
+                "認售金額": f"{put_amt:,.0f}",
+                "P/C_Ratio": round(pc_ratio, 4),
+                "雷達狀態": status
+            }
+            
+        except Exception as e:
+            return f"❌ 執行出錯: {str(e)}"
+
+    def _get_radar_status(self, pc_ratio):
+        if pc_ratio < 0.3:
+            return "🔥 極度樂觀：大戶狂掃認購，注意跳空噴發"
+        elif 0.3 <= pc_ratio < 0.7:
+            return "↗️ 偏多攻擊：多頭占優，券商避險買盤穩定"
+        elif 0.7 <= pc_ratio < 1.2:
+            return "↔️ 盤整偏多：多空拉鋸中"
+        else:
+            return "⚠️ 警戒：避險情緒升溫，防範多殺多"
+
+# --- 實戰測試 (以你關心的台達電為例) ---
+radar = VixRadar() # 如果有 Token 可以放入
+result = radar.analyze_stock('2308') 
+
+# 印出結果
+print("-" * 30)
+for key, value in result.items():
+    print(f"{key}: {value}")
+print("-" * 30)
