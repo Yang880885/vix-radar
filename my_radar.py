@@ -6,9 +6,16 @@ import json
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-st.set_page_config(page_title="獵人戰情室：波段導航儀 6.6", layout="wide")
+st.set_page_config(page_title="獵人戰情室：波段導航儀 6.7", layout="wide")
 st.title("🎯 台股波段轉折導航儀")
-st.caption("雷達 6.6 完美視覺版 | 不死鳥防卡死底層 + 獨立強制避險引擎全數歸位")
+st.caption("雷達 6.7 全域靜音版 | 導入全域狀態記憶體，徹底解決 LINE 疲勞轟炸問題")
+
+# --- 防連發引擎 (全域記憶體，不怕重新整理與多設備連線) ---
+@st.cache_resource
+def get_alert_memory():
+    return {"last_state": "NONE"}
+
+alert_memory = get_alert_memory()
 
 # --- 側邊欄：純粹的通訊引擎 ---
 st.sidebar.header("🤖 LINE 警報引擎")
@@ -34,15 +41,12 @@ def send_line_message(message, token, user_id):
 
 if st.sidebar.button("發送測試警報 🚀"):
     if line_token and line_user_id:
-        if send_line_message("✅ 【戰情室廣播】指揮官，雷達 6.6 系統測試正常！", line_token, line_user_id):
+        if send_line_message("✅ 【戰情室廣播】指揮官，雷達 6.7 系統防連發測試正常！", line_token, line_user_id):
             st.sidebar.success("✅ 測試警報已發射！")
         else:
             st.sidebar.error("❌ 發送失敗，請檢查金鑰。")
     else:
         st.sidebar.warning("⚠️ 尚未設定金鑰。")
-
-if "last_alert_msg" not in st.session_state:
-    st.session_state.last_alert_msg = ""
 
 # --- 核心優化：徹底捨棄 download，改用 Ticker history ---
 @st.cache_data(ttl=300, show_spinner=False)
@@ -168,20 +172,29 @@ if not data_error:
     if is_vix_inverted: score -= 3
     if is_short_panic: score -= 2
 
-# --- 自動警報觸發邏輯 ---
+# --- 全域狀態機警報系統 (6.7 防連發核心) ---
+current_alert_state = "NONE"
 current_alert_msg = ""
+
 if not data_error:
-    if vvix_latest > 115: # 加入 VVIX 獨立強制通報
+    if vvix_latest > 115: 
+        current_alert_state = "VVIX_WARNING"
         current_alert_msg = f"\n🚨【系統強制避險指令生效】\n目前市場波動率指標出現異常，強烈建議建立避險部位！觸發原因：VVIX 異常飆高 ({vvix_latest:.1f})，大戶正瘋狂買進保險。"
     elif score >= 4:
+        current_alert_state = "BUY_SIGNAL"
         current_alert_msg = f"\n🚨【獵人紅色警報】\n🟢 強烈買進訊號！\n自動戰力評估高達 {score} 分！絕佳抄底買點已浮現！"
     elif score <= -4:
+        current_alert_state = "SELL_SIGNAL"
         current_alert_msg = f"\n🚨【獵人紅色警報】\n🔴 極度危險訊號！\n空方戰力高達 {abs(score)} 分！系統偵測到多重暴跌風險！"
 
-if current_alert_msg and line_token and line_user_id:
-    if st.session_state.last_alert_msg != current_alert_msg:
+if current_alert_state != "NONE" and line_token and line_user_id:
+    # 只在「狀態發生改變」時發送 LINE (例如從 NONE 變成 VVIX_WARNING)
+    if alert_memory["last_state"] != current_alert_state:
         if send_line_message(current_alert_msg, line_token, line_user_id):
-            st.session_state.last_alert_msg = current_alert_msg
+            alert_memory["last_state"] = current_alert_state # 寫入全域記憶體
+elif current_alert_state == "NONE":
+    # 危機解除，重置全域記憶體，等待下一次危機
+    alert_memory["last_state"] = "NONE"
 
 # --- 🛡️ 獨立避險警告面板 (還原 5.8.3 視覺) ---
 if not data_error and vvix_latest > 115:
