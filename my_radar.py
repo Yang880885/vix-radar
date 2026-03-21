@@ -6,9 +6,9 @@ import json
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-st.set_page_config(page_title="獵人戰情室：波段導航儀 6.0", layout="wide")
+st.set_page_config(page_title="獵人戰情室：波段導航儀 6.1", layout="wide")
 st.title("🎯 台股波段轉折導航儀")
-st.caption("雷達 6.0 升級版 | 修復執行緒崩潰、加入快取機制、進階 VIX 避險與 LINE 防擾民系統")
+st.caption("雷達 6.1 穩定裝甲版 | 徹底解決畫面空白、連線卡死與多執行緒問題")
 
 # --- 側邊欄：純粹的通訊引擎 ---
 st.sidebar.header("🤖 LINE 警報引擎")
@@ -25,7 +25,7 @@ def send_line_message(message, token, user_id):
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
     payload = {"to": user_id, "messages": [{"type": "text", "text": message}]}
     try:
-        response = requests.post(url, headers=headers, data=json.dumps(payload))
+        response = requests.post(url, headers=headers, data=json.dumps(payload), timeout=5)
         if response.status_code == 200:
             return True
     except:
@@ -34,64 +34,93 @@ def send_line_message(message, token, user_id):
 
 if st.sidebar.button("發送測試警報 🚀"):
     if line_token and line_user_id:
-        if send_line_message("✅ 【戰情室廣播】指揮官，雷達 6.0 系統測試正常！通訊管道 100% 暢通！", line_token, line_user_id):
+        if send_line_message("✅ 【戰情室廣播】指揮官，雷達 6.1 系統測試正常！", line_token, line_user_id):
             st.sidebar.success("✅ 測試警報已發射！請檢查 LINE。")
         else:
             st.sidebar.error("❌ 發送失敗，請檢查金鑰設定。")
     else:
         st.sidebar.warning("⚠️ 尚未設定金鑰。")
 
-# --- 初始化 Session State 防止 LINE 重複發送 ---
 if "last_alert_msg" not in st.session_state:
     st.session_state.last_alert_msg = ""
 
-# --- 核心優化 1：加入快取機制並關閉多執行緒 ---
-@st.cache_data(ttl=300) # 5分鐘更新一次，避免被 Yahoo 封鎖
-def fetch_market_data(tickers, period="10d"):
-    # threads=False 徹底解決 RuntimeError 崩潰問題
-    raw_data = yf.download(tickers, period=period, threads=False)['Close'].dropna(how='all')
-    return raw_data[raw_data.index.dayofweek < 5]
+# --- 核心優化 1：安全單檔抓取機制 (絕對防呆、防卡死) ---
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_market_data_safe(tickers, period="10d"):
+    df_list = []
+    for ticker in tickers:
+        try:
+            # 單檔逐一抓取，徹底避開 yfinance 的 multitasking 執行緒 Bug
+            data = yf.download(ticker, period=period, progress=False)
+            if not data.empty and 'Close' in data.columns:
+                series = data['Close']
+                # 處理 yfinance 新版回傳格式可能不同的問題
+                if isinstance(series, pd.DataFrame):
+                    series = series.iloc[:, 0]
+                series.name = ticker
+                df_list.append(series)
+        except Exception:
+            continue
+    
+    if df_list:
+        combined_df = pd.concat(df_list, axis=1)
+        return combined_df[combined_df.index.dayofweek < 5]
+    return pd.DataFrame()
 
-@st.cache_data(ttl=300)
-def fetch_twii_full(period="2mo"):
-    twii_data = yf.download("^TWII", period=period, threads=False).dropna(how='all')
-    return twii_data[twii_data.index.dayofweek < 5]
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_single_full_safe(ticker, period="2mo"):
+    try:
+        data = yf.download(ticker, period=period, progress=False)
+        if not data.empty:
+            df = data.dropna(how='all')
+            return df[df.index.dayofweek < 5]
+    except Exception:
+        pass
+    return pd.DataFrame()
 
-@st.cache_data(ttl=300)
-def fetch_btc():
-    return yf.download("BTC-USD", period="10d", threads=False)['Close'].dropna()
+# --- 啟動畫面提示與資料抓取 ---
+with st.spinner("📡 系統啟動中：正在與全球交易所建立安全連線... (初次載入約需 10~15 秒)"):
+    trad_tickers = ["^VIX", "^VIX3M", "^VVIX", "^SKEW", "^VIX9D", "^SOX", "^NDX", "TSM", "TWD=X", "^TNX"]
+    trad_data = fetch_market_data_safe(trad_tickers, "10d")
+    
+    tw_tickers = ["^TWII", "^TWOII"]
+    tw_data = fetch_market_data_safe(tw_tickers, "2mo")
+    twii_data = fetch_single_full_safe("^TWII", "2mo")
+    
+    btc_full = fetch_single_full_safe("BTC-USD", "10d")
 
-# --- 抓取所有戰區資料 ---
-trad_tickers = ["^VIX", "^VIX3M", "^VVIX", "^SKEW", "^VIX9D", "^SOX", "^NDX", "TSM", "TWD=X", "^TNX"]
-trad_data = fetch_market_data(trad_tickers, "10d")
-
-btc_data = fetch_btc()
-
-tw_tickers = ["^TWII", "^TWOII"]
-tw_data = fetch_market_data(tw_tickers, "2mo")
-twii_data = fetch_twii_full("2mo")
+# --- 致命錯誤攔截器 ---
+if trad_data.empty or tw_data.empty or twii_data.empty:
+    st.error("🚨 嚴重錯誤：無法取得交易所即時數據！")
+    st.warning("原因可能為：\n1. Yahoo API 伺服器暫時壅塞或阻擋連線\n2. 逢週末休市導致資料讀取異常\n\n👉 **請稍等 1 分鐘後再重新整理網頁。**")
+    st.stop() # 強制停止後續運算，防止產生白畫面或紅字報錯
 
 # --- 數據計算區 ---
 t_latest, t_prev = {}, {}
-for col in trad_data.columns:
-    valid_series = trad_data[col].dropna()
-    if len(valid_series) >= 2:
-        t_latest[col] = float(valid_series.iloc[-1])
-        t_prev[col] = float(valid_series.iloc[-2])
-    else:
-        t_latest[col], t_prev[col] = 0.0001, 0.0001
-
-btc_latest = float(btc_data.iloc[-1])
-btc_prev = float(btc_data.iloc[-2])
+for col in trad_tickers:
+    if col in trad_data.columns:
+        valid_series = trad_data[col].dropna()
+        if len(valid_series) >= 2:
+            t_latest[col] = float(valid_series.iloc[-1])
+            t_prev[col] = float(valid_series.iloc[-2])
+            continue
+    t_latest[col], t_prev[col] = 0.0001, 0.0001
 
 tw_latest, tw_prev = {}, {}
-for col in tw_data.columns:
-    valid_series = tw_data[col].dropna()
-    if len(valid_series) >= 2:
-        tw_latest[col] = float(valid_series.iloc[-1])
-        tw_prev[col] = float(valid_series.iloc[-2])
-    else:
-        tw_latest[col], tw_prev[col] = 0.0001, 0.0001
+for col in tw_tickers:
+    if col in tw_data.columns:
+        valid_series = tw_data[col].dropna()
+        if len(valid_series) >= 2:
+            tw_latest[col] = float(valid_series.iloc[-1])
+            tw_prev[col] = float(valid_series.iloc[-2])
+            continue
+    tw_latest[col], tw_prev[col] = 0.0001, 0.0001
+
+if not btc_full.empty and len(btc_full) >= 2:
+    btc_latest = float(btc_full['Close'].iloc[-1])
+    btc_prev = float(btc_full['Close'].iloc[-2])
+else:
+    btc_latest, btc_prev = 0.0001, 0.0001
 
 ratio_vix_vix3m = t_latest['^VIX'] / t_latest['^VIX3M']
 prev_ratio = t_prev['^VIX'] / t_prev['^VIX3M']
@@ -110,7 +139,7 @@ tsm_pct = ((t_latest['TSM'] / t_prev['TSM']) - 1) * 100
 
 twd_latest = t_latest['TWD=X']
 twd_delta = twd_latest - t_prev['TWD=X']
-twd_ma5 = trad_data['TWD=X'].dropna().tail(5).mean()
+twd_ma5 = trad_data['TWD=X'].dropna().tail(5).mean() if 'TWD=X' in trad_data.columns else twd_latest
 
 tnx_latest = t_latest['^TNX']
 tnx_delta = tnx_latest - t_prev['^TNX']
@@ -126,8 +155,8 @@ gain = (delta.where(delta > 0, 0)).fillna(0)
 loss = (-delta.where(delta < 0, 0)).fillna(0)
 rs = gain.rolling(window=14, min_periods=1).mean() / loss.rolling(window=14, min_periods=1).mean()
 rsi_14 = 100 - (100 / (1 + rs))
-latest_rsi = float(rsi_14.iloc[-1])
-rsi_delta = latest_rsi - float(rsi_14.iloc[-2])
+latest_rsi = float(rsi_14.iloc[-1]) if not rsi_14.dropna().empty else 50
+rsi_delta = latest_rsi - float(rsi_14.iloc[-2]) if len(rsi_14.dropna()) >= 2 else 0
 
 tw_open, tw_close = float(twii_data['Open'].iloc[-1]), float(twii_data['Close'].iloc[-1])
 tw_high, tw_low = float(twii_data['High'].iloc[-1]), float(twii_data['Low'].iloc[-1])
@@ -136,8 +165,8 @@ lower_shadow = min(tw_open, tw_close) - tw_low
 is_long_lower_shadow = (lower_shadow > body * 2) and (lower_shadow > (tw_high - max(tw_open, tw_close))) and (body > 0)
 
 # --- 核心優化 2：進階 VIX 即時避險訊號邏輯 ---
-is_vix_inverted = ratio_vix_vix3m > 1.05  # VIX > VIX3M 超過 5%，市場極度恐慌
-is_short_panic = diff_vix9d_vix > 2.0     # 9天期 VIX 飆升速度遠大於 30天期，突發性黑天鵝
+is_vix_inverted = ratio_vix_vix3m > 1.05
+is_short_panic = diff_vix9d_vix > 2.0
 
 score = 0
 if ratio_vix_vix3m > 1.0: score += 3
@@ -148,19 +177,17 @@ if t_latest['^SKEW'] > 140: score -= 2
 if latest_rsi > 70: score -= 2
 if twd_latest > twd_ma5: score -= 1
 if tnx_latest > 4.5: score -= 1
-# 加入新的避險扣分
 if is_vix_inverted: score -= 3
 if is_short_panic: score -= 2
 
-# --- 自動警報觸發邏輯 (加入防連發機制) ---
+# --- 自動警報觸發邏輯 ---
 current_alert_msg = ""
 if score >= 4:
     current_alert_msg = f"\n🚨【獵人紅色警報】\n🟢 強烈買進訊號！\n自動戰力評估高達 {score} 分！絕佳抄底買點已浮現，請立刻開啟雷達確認指令！"
-elif score <= -4:  # 調整為 -4 避免過度敏感
+elif score <= -4:
     current_alert_msg = f"\n🚨【獵人紅色警報】\n🔴 極度危險訊號！\n空方戰力高達 {abs(score)} 分！系統偵測到多重暴跌風險或 VIX 嚴重倒掛，請立刻確認避險部位！"
 
 if current_alert_msg and line_token and line_user_id:
-    # 判斷是否跟上一次發送的訊息相同，不同才發送
     if st.session_state.last_alert_msg != current_alert_msg:
         if send_line_message(current_alert_msg, line_token, line_user_id):
             st.session_state.last_alert_msg = current_alert_msg
@@ -183,21 +210,13 @@ st.markdown("### 📈 戰區 1：台股結構")
 t1, t2, t3 = st.columns(3)
 with t1:
     st.metric(label="大盤 RSI", value=f"{latest_rsi:.1f}", delta=f"{rsi_delta:.1f}")
-    if latest_rsi < 30: st.error("🚨 **嚴重超賣**\n\n🎯 **動作**: 準備搶V轉反彈")
-    elif latest_rsi > 70: st.warning("⚠️ **高檔過熱**\n\n🎯 **動作**: 勿追高，準備停利")
-    else: st.success("✅ **位階適中**\n\n🎯 **動作**: 依個別強勢股操作")
 with t2:
     if is_long_lower_shadow:
         st.metric(label="主力護盤", value="長下影線", delta="強力支撐", delta_color="off")
-        st.error("🎯 **洗盤結束**\n\n🎯 **動作**: 打出 30% 資金抄底")
     else:
         st.metric(label="主力護盤", value="無", delta="一般", delta_color="off")
-        st.success("✅ **無極端洗盤**\n\n🎯 **動作**: 無反轉訊號，耐心等待")
 with t3:
     st.metric(label="櫃買指數", value=f"{tw_latest['^TWOII']:.2f}", delta=f"{twoii_pct:.2f}%")
-    if spread > 1.0 and twii_pct > 0: st.error("🚨 **嚴重拉積盤**\n\n🎯 **動作**: 避開中小型與一般ETF")
-    elif twoii_pct > twii_pct and twoii_pct > 0: st.success("🔥 **內資噴發**\n\n🎯 **動作**: 積極佈局中小型ETF")
-    else: st.info("⚖️ **結構同步**\n\n🎯 **動作**: 依大盤趨勢操作")
 
 st.divider()
 
@@ -206,23 +225,12 @@ st.markdown("### 🌐 戰區 2：恐慌波動 (⚠️紅向上=危險)")
 c1, c2, c3, c4 = st.columns(4)
 with c1:
     st.metric("VIX 比值", f"{ratio_vix_vix3m:.2f}", delta=f"{ratio_delta:.2f}", delta_color="inverse")
-    if is_vix_inverted: st.error("🚨 **極度恐慌倒掛**\n\n🎯 暫停買進，準備避險")
-    elif ratio_vix_vix3m > 1: st.warning("⚠️ **逆價差爆發**\n\n🎯 準備抄底")
-    else: st.success("✅ **正價差**\n\n🎯 抱緊多單")
 with c2:
     st.metric("VVIX 避險", f"{t_latest['^VVIX']:.1f}", delta=f"{vvix_delta:.1f}", delta_color="inverse")
-    if t_latest['^VVIX'] > 115: st.error("🔥 **造市商瘋狂避險**\n\n🎯 大幅減碼")
-    elif t_latest['^VVIX'] > 110: st.warning("⚠️ **大戶避險**\n\n🎯 拉高停利點")
-    else: st.success("✅ **情緒正常**\n\n🎯 按兵不動")
 with c3:
     st.metric("SKEW 尾部", f"{t_latest['^SKEW']:.1f}", delta=f"{skew_delta:.1f}", delta_color="inverse")
-    if t_latest['^SKEW'] > 140: st.error("💣 **黑天鵝預警**\n\n🎯 鎖死現金避險")
-    else: st.success("✅ **風險低**\n\n🎯 維持正常配置")
 with c4:
     st.metric("VIX 乖離", f"{diff_vix9d_vix:.2f}", delta=f"{diff_delta:.2f}", delta_color="inverse")
-    if is_short_panic: st.error("🔥 **突發性短線崩跌**\n\n🎯 嚴防連續下殺")
-    elif diff_vix9d_vix > 0: st.warning("⚠️ **情緒轉弱**\n\n🎯 隨時報復性V轉")
-    else: st.success("✅ **無異常**\n\n🎯 不隨意短線進出")
 
 st.divider()
 
@@ -231,16 +239,10 @@ st.markdown("### 💸 戰區 3：資金風險 (⚠️紅向上=撤退)")
 f1, f2, f3 = st.columns(3)
 with f1:
     st.metric("台幣匯率", f"{twd_latest:.2f}", delta=f"{twd_delta:.2f}", delta_color="inverse")
-    if twd_latest > twd_ma5: st.warning("⚠️ **台幣貶值**\n\n🎯 暫緩權值股買進")
-    else: st.success("✅ **熱錢流入**\n\n🎯 有利多頭佈局")
 with f2:
     st.metric("美債殖利率", f"{tnx_latest:.2f}%", delta=f"{tnx_delta:.2f}%", delta_color="inverse")
-    if tnx_latest > 4.5: st.error("🚨 **成本過高**\n\n🎯 避開高本益比電子股")
-    else: st.success("✅ **資金寬鬆**\n\n🎯 有利科技半導體")
 with f3:
     st.metric("比特幣(USD)", f"{btc_latest:,.0f}", f"{btc_pct:.2f}%")
-    if btc_pct < -5.0: st.error("💣 **幣圈暴跌**\n\n🎯 嚴控股市資金水位")
-    else: st.success("✅ **投機穩定**\n\n🎯 維持操作紀律")
 
 st.divider()
 
@@ -258,27 +260,34 @@ st.divider()
 
 # --- 🔭 戰區 5：歷史回測 ---
 st.markdown("### 🔭 戰區 5：鑑古知今")
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=300, show_spinner=False)
 def fetch_hist_data():
-    data = yf.download(["^VIX", "^VIX3M", "^TWII", "TWD=X"], period="6mo", threads=False)['Close'].dropna(how='all')
-    return data[data.index.dayofweek < 5].ffill()
+    try:
+        data = fetch_market_data_safe(["^VIX", "^VIX3M", "^TWII", "TWD=X"], "6mo")
+        if not data.empty:
+            return data.ffill()
+    except:
+        pass
+    return pd.DataFrame()
 
 hist_data = fetch_hist_data()
 
-c_chart1, c_chart2 = st.columns(2)
-with c_chart1:
-    st.markdown("#### 恐慌 vs 台股")
-    fig1 = make_subplots(specs=[[{"secondary_y": True}]])
-    fig1.add_trace(go.Scatter(x=hist_data.index, y=hist_data['^TWII'], name="台股", line=dict(color='#2962ff')), secondary_y=False)
-    fig1.add_trace(go.Scatter(x=hist_data.index, y=hist_data['^VIX']/hist_data['^VIX3M'], name="恐慌", line=dict(color='#ff3b3b', dash='dot')), secondary_y=True)
-    fig1.add_hline(y=1.0, line_dash="solid", line_color="red", secondary_y=True)
-    fig1.update_layout(height=350, margin=dict(l=0, r=0, t=30, b=0), hovermode="x unified", legend=dict(yanchor="bottom", y=1.02, xanchor="right", x=1))
-    st.plotly_chart(fig1, use_container_width=True)
+if not hist_data.empty and '^TWII' in hist_data.columns and '^VIX' in hist_data.columns and '^VIX3M' in hist_data.columns:
+    c_chart1, c_chart2 = st.columns(2)
+    with c_chart1:
+        st.markdown("#### 恐慌 vs 台股")
+        fig1 = make_subplots(specs=[[{"secondary_y": True}]])
+        fig1.add_trace(go.Scatter(x=hist_data.index, y=hist_data['^TWII'], name="台股", line=dict(color='#2962ff')), secondary_y=False)
+        fig1.add_trace(go.Scatter(x=hist_data.index, y=hist_data['^VIX']/hist_data['^VIX3M'], name="恐慌", line=dict(color='#ff3b3b', dash='dot')), secondary_y=True)
+        fig1.add_hline(y=1.0, line_dash="solid", line_color="red", secondary_y=True)
+        fig1.update_layout(height=350, margin=dict(l=0, r=0, t=30, b=0), hovermode="x unified")
+        st.plotly_chart(fig1, use_container_width=True)
 
-with c_chart2:
-    st.markdown("#### 熱錢 vs 台股")
-    fig2 = make_subplots(specs=[[{"secondary_y": True}]])
-    fig2.add_trace(go.Scatter(x=hist_data.index, y=hist_data['^TWII'], name="台股", line=dict(color='#2962ff')), secondary_y=False)
-    fig2.add_trace(go.Scatter(x=hist_data.index, y=hist_data['TWD=X'], name="匯率", line=dict(color='#00c853', dash='dot')), secondary_y=True)
-    fig2.update_layout(height=350, margin=dict(l=0, r=0, t=30, b=0), hovermode="x unified", legend=dict(yanchor="bottom", y=1.02, xanchor="right", x=1))
-    st.plotly_chart(fig2, use_container_width=True)
+    if 'TWD=X' in hist_data.columns:
+        with c_chart2:
+            st.markdown("#### 熱錢 vs 台股")
+            fig2 = make_subplots(specs=[[{"secondary_y": True}]])
+            fig2.add_trace(go.Scatter(x=hist_data.index, y=hist_data['^TWII'], name="台股", line=dict(color='#2962ff')), secondary_y=False)
+            fig2.add_trace(go.Scatter(x=hist_data.index, y=hist_data['TWD=X'], name="匯率", line=dict(color='#00c853', dash='dot')), secondary_y=True)
+            fig2.update_layout(height=350, margin=dict(l=0, r=0, t=30, b=0), hovermode="x unified")
+            st.plotly_chart(fig2, use_container_width=True)
