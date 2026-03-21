@@ -6,9 +6,9 @@ import json
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-st.set_page_config(page_title="獵人戰情室：波段導航儀 6.5", layout="wide")
+st.set_page_config(page_title="獵人戰情室：波段導航儀 6.6", layout="wide")
 st.title("🎯 台股波段轉折導航儀")
-st.caption("雷達 6.5 不死鳥防護版 | 捨棄 download() 改用單軌直連，保證畫面絕對不留白")
+st.caption("雷達 6.6 完美視覺版 | 不死鳥防卡死底層 + 獨立強制避險引擎全數歸位")
 
 # --- 側邊欄：純粹的通訊引擎 ---
 st.sidebar.header("🤖 LINE 警報引擎")
@@ -34,7 +34,7 @@ def send_line_message(message, token, user_id):
 
 if st.sidebar.button("發送測試警報 🚀"):
     if line_token and line_user_id:
-        if send_line_message("✅ 【戰情室廣播】指揮官，雷達 6.5 系統測試正常！", line_token, line_user_id):
+        if send_line_message("✅ 【戰情室廣播】指揮官，雷達 6.6 系統測試正常！", line_token, line_user_id):
             st.sidebar.success("✅ 測試警報已發射！")
         else:
             st.sidebar.error("❌ 發送失敗，請檢查金鑰。")
@@ -55,7 +55,6 @@ def fetch_master_data():
     results = {}
     for t in tickers:
         try:
-            # 使用 Ticker().history() 最穩定，絕不會引發執行緒崩潰
             hist = yf.Ticker(t).history(period="2mo")
             if not hist.empty and 'Close' in hist.columns:
                 results[t] = hist['Close']
@@ -88,13 +87,12 @@ if master_data.empty or twii_data.empty:
     data_error = True
     st.error("🚨 警告：無法連線至 Yahoo API (可能遭暫時阻擋)。系統已啟動備用電源以維持畫面運作。")
     st.info("👉 請稍候幾分鐘，點擊右上角「⋮」->「Clear cache」重新嘗試連線。")
-    # 產生備用假數據，防止 KeyError 讓畫面變黑
     dates = pd.date_range(end=pd.Timestamp.today(), periods=5, freq='B')
     dummy_dict = {t: [100.0]*5 for t in ["^VIX", "^VIX3M", "^VVIX", "^SKEW", "^VIX9D", "^SOX", "^NDX", "TSM", "TWD=X", "^TNX", "^TWII", "^TWOII", "BTC-USD"]}
     master_data = pd.DataFrame(dummy_dict, index=dates)
     twii_data = pd.DataFrame({'Open': [100]*5, 'High': [100]*5, 'Low': [100]*5, 'Close': [100]*5}, index=dates)
 
-# --- 數據安全讀取區 (防止任何 KeyError) ---
+# --- 數據安全讀取區 ---
 t_latest, t_prev = {}, {}
 for col in master_data.columns:
     valid_series = master_data[col].dropna()
@@ -105,7 +103,6 @@ for col in master_data.columns:
         t_latest[col], t_prev[col] = 0.0001, 0.0001
 
 def get_val(ticker, latest=True):
-    # 安全取值，找不到就給 0.0001，永遠不會報錯
     return t_latest.get(ticker, 0.0001) if latest else t_prev.get(ticker, 0.0001)
 
 ratio_vix_vix3m = get_val('^VIX') / get_val('^VIX3M')
@@ -116,7 +113,8 @@ diff_vix9d_vix = get_val('^VIX9D') - get_val('^VIX')
 prev_diff = get_val('^VIX9D', False) - get_val('^VIX', False)
 diff_delta = diff_vix9d_vix - prev_diff
 
-vvix_delta = get_val('^VVIX') - get_val('^VVIX', False)
+vvix_latest = get_val('^VVIX')
+vvix_delta = vvix_latest - get_val('^VVIX', False)
 skew_delta = get_val('^SKEW') - get_val('^SKEW', False)
 
 sox_pct = ((get_val('^SOX') / get_val('^SOX', False)) - 1) * 100
@@ -158,7 +156,7 @@ is_vix_inverted = ratio_vix_vix3m > 1.05
 is_short_panic = diff_vix9d_vix > 2.0
 
 score = 0
-if not data_error: # 只有真實數據才計算分數
+if not data_error: 
     if ratio_vix_vix3m > 1.0: score += 3
     if latest_rsi < 30: score += 2
     if is_long_lower_shadow: score += 2
@@ -173,7 +171,9 @@ if not data_error: # 只有真實數據才計算分數
 # --- 自動警報觸發邏輯 ---
 current_alert_msg = ""
 if not data_error:
-    if score >= 4:
+    if vvix_latest > 115: # 加入 VVIX 獨立強制通報
+        current_alert_msg = f"\n🚨【系統強制避險指令生效】\n目前市場波動率指標出現異常，強烈建議建立避險部位！觸發原因：VVIX 異常飆高 ({vvix_latest:.1f})，大戶正瘋狂買進保險。"
+    elif score >= 4:
         current_alert_msg = f"\n🚨【獵人紅色警報】\n🟢 強烈買進訊號！\n自動戰力評估高達 {score} 分！絕佳抄底買點已浮現！"
     elif score <= -4:
         current_alert_msg = f"\n🚨【獵人紅色警報】\n🔴 極度危險訊號！\n空方戰力高達 {abs(score)} 分！系統偵測到多重暴跌風險！"
@@ -182,6 +182,13 @@ if current_alert_msg and line_token and line_user_id:
     if st.session_state.last_alert_msg != current_alert_msg:
         if send_line_message(current_alert_msg, line_token, line_user_id):
             st.session_state.last_alert_msg = current_alert_msg
+
+# --- 🛡️ 獨立避險警告面板 (還原 5.8.3 視覺) ---
+if not data_error and vvix_latest > 115:
+    st.error(f"""
+    ### 🛡️ 系統強制避險指令生效
+    目前市場波動率指標出現異常，強烈建議建立避險部位！觸發原因：VVIX 異常飆高 ({vvix_latest:.1f})，大戶正瘋狂買進保險。
+    """)
 
 # --- 🏆 頂部：綜合決策計分板 ---
 st.markdown("## 🧠 AI 戰術總分")
@@ -233,10 +240,10 @@ with c1:
         elif ratio_vix_vix3m > 1: st.warning("⚠️ **逆價差爆發**\n\n🎯 **動作**: 準備抄底")
         else: st.success("✅ **正價差**\n\n🎯 **動作**: 抱緊多單")
 with c2:
-    st.metric("VVIX 避險", f"{get_val('^VVIX'):.1f}", delta=f"{vvix_delta:.1f}", delta_color="inverse")
+    st.metric("VVIX 避險", f"{vvix_latest:.1f}", delta=f"{vvix_delta:.1f}", delta_color="inverse")
     if not data_error:
-        if get_val('^VVIX') > 115: st.error("🔥 **造市商瘋狂避險**\n\n🎯 **動作**: 大幅減碼")
-        elif get_val('^VVIX') > 110: st.warning("⚠️ **大戶避險**\n\n🎯 **動作**: 拉高停利點")
+        if vvix_latest > 115: st.error("🔥 **造市商瘋狂避險**\n\n🎯 **動作**: 大幅減碼")
+        elif vvix_latest > 110: st.warning("⚠️ **大戶避險**\n\n🎯 **動作**: 拉高停利點")
         else: st.success("✅ **情緒正常**\n\n🎯 **動作**: 按兵不動")
 with c3:
     st.metric("SKEW 尾部", f"{get_val('^SKEW'):.1f}", delta=f"{skew_delta:.1f}", delta_color="inverse")
