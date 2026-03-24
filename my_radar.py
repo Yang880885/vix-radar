@@ -308,7 +308,21 @@ with tab2:
                     st.dataframe(consensus, use_container_width=True)
                 else:
                     st.warning("⚔️ 今日大盤撕裂嚴重，外資與投信沒有任何交集買超的標的。")
+
+                # ================= 新增：土洋聯合追殺榜 =================
+                sell_consensus = merged[(merged['買賣超張數_外資'] < 0) & (merged['買賣超張數_投信'] < 0)].copy()
+                sell_consensus['雙主力總賣超'] = sell_consensus['買賣超張數_外資'] + sell_consensus['買賣超張數_投信']
+                sell_consensus = sell_consensus.sort_values(by='雙主力總賣超', ascending=True).head(15).reset_index(drop=True)
+                sell_consensus.index = sell_consensus.index + 1
                 
+                st.divider()
+                st.markdown("### 💣 【地雷預警名單】土洋共識重疊賣超 (Top 15)")
+                if not sell_consensus.empty:
+                    st.error("🚨 **AI 警告**：以下標的遭到外資與投信「聯手無情拋售」，籌碼極度渙散，嚴禁摸底接刀！")
+                    st.dataframe(sell_consensus, use_container_width=True)
+                else:
+                    st.success("🛡️ 今日無雙法人聯合追殺之標的。")
+
                 # 顯示個別排行榜
                 st.divider()
                 c1, c2 = st.columns(2)
