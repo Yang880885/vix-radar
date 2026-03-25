@@ -8,9 +8,9 @@ from plotly.subplots import make_subplots
 import datetime
 import io
 
-st.set_page_config(page_title="獵人戰情室：波段導航儀 8.0", layout="wide")
+st.set_page_config(page_title="獵人戰情室：波段導航儀 8.1 終極版", layout="wide")
 st.title("🎯 台股波段轉折導航儀")
-st.caption("雷達 8.0 土洋共識狙擊版 | 實裝天地連線系統 + 外資投信重疊買超過濾引擎")
+st.caption("雷達 8.1 完整修復版 | 巨觀動作全數歸位 + 實裝月線防護罩 + 融資潔淨度掃描 + 追殺地雷預警")
 
 # --- 防連發引擎 ---
 @st.cache_resource
@@ -37,6 +37,13 @@ def send_line_message(message, token, user_id):
         if response.status_code == 200: return True
     except: pass
     return False
+
+if st.sidebar.button("發送測試警報 🚀"):
+    if line_token and line_user_id:
+        if send_line_message("✅ 【戰情室廣播】指揮官，雷達 8.1 終極版測試正常！", line_token, line_user_id):
+            st.sidebar.success("✅ 測試警報已發射！")
+        else: st.sidebar.error("❌ 發送失敗，請檢查金鑰。")
+    else: st.sidebar.warning("⚠️ 尚未設定金鑰。")
 
 # ==========================================
 # 核心資料抓取 1：全球金融與宏觀數據
@@ -76,7 +83,7 @@ with health_col1:
     if not data_error: st.success("🟢 全球 API 連線正常")
     else: st.error("🔴 交易所 API 遭阻擋")
 with health_col2:
-    st.info("🔵 籌碼數據已切換為「手動接收模式」")
+    st.info("🔵 籌碼數據已升級為「手動接收模式」")
 with health_col3:
     if not data_error:
         last_date = master_data.index[-1].strftime("%Y-%m-%d")
@@ -92,7 +99,7 @@ if data_error:
     twii_data = pd.DataFrame({'Open': [100]*6, 'High': [100]*6, 'Low': [100]*6, 'Close': [100]*6, 'Volume': [1000]*6}, index=dates)
 
 # ==========================================
-# 數據安全讀取與運算區
+# 💥 完整數據安全讀取與運算區 (修復歸位)
 # ==========================================
 t_latest, t_prev = {}, {}
 for col in master_data.columns:
@@ -163,7 +170,7 @@ if not data_error:
 # ==========================================
 # 🖥️ 雙螢幕戰區 UI 介面
 # ==========================================
-tab1, tab2 = st.tabs(["🌐 戰區一：宏觀波動雷達", "🎯 戰區二：土洋共識籌碼狙擊"])
+tab1, tab2 = st.tabs(["🌐 戰區一：宏觀波動雷達", "🎯 戰區二：終極籌碼狙擊儀"])
 
 with tab1:
     if not data_error:
@@ -179,6 +186,8 @@ with tab1:
     else: st.warning(f"### ⚪ 多空交戰 ({score} 分)\n**🎯 總部指令**：多空訊號抵銷，耐心等待。")
 
     st.divider()
+
+    # 💥 【完整加回戰區 1-4 的動作指示與漲跌幅】💥
     st.markdown("### 📈 戰區 1：台股結構")
     t1, t2, t3 = st.columns(3)
     with t1:
@@ -205,20 +214,58 @@ with tab1:
     st.divider()
     st.markdown("### 🌐 戰區 2：恐慌波動 (⚠️紅向上=危險)")
     c1, c2, c3, c4 = st.columns(4)
-    with c1: st.metric("VIX 比值", f"{ratio_vix_vix3m:.2f}", delta=f"{ratio_delta:.2f}", delta_color="inverse")
-    with c2: st.metric("VVIX 避險", f"{vvix_latest:.1f}", delta=f"{vvix_delta:.1f}", delta_color="inverse")
-    with c3: st.metric("SKEW 尾部", f"{get_val('^SKEW'):.1f}", delta=f"{skew_delta:.1f}", delta_color="inverse")
-    with c4: st.metric("VIX 乖離", f"{diff_vix9d_vix:.2f}", delta=f"{diff_delta:.2f}", delta_color="inverse")
+    with c1:
+        st.metric("VIX 比值", f"{ratio_vix_vix3m:.2f}", delta=f"{ratio_delta:.2f}", delta_color="inverse")
+        if not data_error:
+            if is_vix_inverted: st.error("🚨 **極度恐慌倒掛**\n\n🎯 **動作**: 暫停買進，準備避險")
+            elif ratio_vix_vix3m > 1: st.warning("⚠️ **逆價差爆發**\n\n🎯 **動作**: 準備抄底")
+            else: st.success("✅ **正價差**\n\n🎯 **動作**: 抱緊多單")
+    with c2:
+        st.metric("VVIX 避險", f"{vvix_latest:.1f}", delta=f"{vvix_delta:.1f}", delta_color="inverse")
+        if not data_error:
+            if vvix_latest > 115: st.error("🔥 **造市商瘋狂避險**\n\n🎯 **動作**: 大幅減碼")
+            elif vvix_latest > 110: st.warning("⚠️ **大戶避險**\n\n🎯 **動作**: 拉高停利點")
+            else: st.success("✅ **情緒正常**\n\n🎯 **動作**: 按兵不動")
+    with c3:
+        st.metric("SKEW 尾部", f"{get_val('^SKEW'):.1f}", delta=f"{skew_delta:.1f}", delta_color="inverse")
+        if not data_error:
+            if get_val('^SKEW') > 140: st.error("💣 **黑天鵝預警**\n\n🎯 **動作**: 鎖死現金避險")
+            else: st.success("✅ **風險低**\n\n🎯 **動作**: 維持正常配置")
+    with c4:
+        st.metric("VIX 乖離", f"{diff_vix9d_vix:.2f}", delta=f"{diff_delta:.2f}", delta_color="inverse")
+        if not data_error:
+            if is_short_panic: st.error("🔥 **突發短線崩跌**\n\n🎯 **動作**: 嚴防連續下殺")
+            elif diff_vix9d_vix > 0: st.warning("⚠️ **情緒轉弱**\n\n🎯 **動作**: 隨時報復性V轉")
+            else: st.success("✅ **無異常**\n\n🎯 **動作**: 不隨意短線進出")
 
     st.divider()
     st.markdown("### 💸 戰區 3：資金風險 (⚠️紅向上=撤退)")
     f1, f2, f3 = st.columns(3)
-    with f1: st.metric("台幣匯率", f"{twd_latest:.2f}", delta=f"{twd_delta:.2f}", delta_color="inverse")
-    with f2: st.metric("美債殖利率", f"{tnx_latest:.2f}%", delta=f"{tnx_delta:.2f}%", delta_color="inverse")
-    with f3: st.metric("比特幣(USD)", f"{get_val('BTC-USD'):,.0f}", f"{btc_pct:.2f}%")
+    with f1:
+        st.metric("台幣匯率", f"{twd_latest:.2f}", delta=f"{twd_delta:.2f}", delta_color="inverse")
+        if not data_error:
+            if twd_latest > twd_ma5: st.warning("⚠️ **台幣貶值**\n\n🎯 **動作**: 暫緩權值股買進")
+            else: st.success("✅ **熱錢流入**\n\n🎯 **動作**: 有利多頭佈局")
+    with f2:
+        st.metric("美債殖利率", f"{tnx_latest:.2f}%", delta=f"{tnx_delta:.2f}%", delta_color="inverse")
+        if not data_error:
+            if tnx_latest > 4.5: st.error("🚨 **成本過高**\n\n🎯 **動作**: 避開高本益比電子股")
+            else: st.success("✅ **資金寬鬆**\n\n🎯 **動作**: 有利科技半導體")
+    with f3:
+        st.metric("比特幣(USD)", f"{get_val('BTC-USD'):,.0f}", f"{btc_pct:.2f}%")
+        if not data_error:
+            if btc_pct < -5.0: st.error("💣 **幣圈暴跌**\n\n🎯 **動作**: 嚴控股市資金水位")
+            else: st.success("✅ **投機穩定**\n\n🎯 **動作**: 維持操作紀律")
 
     st.divider()
-    st.markdown("### 🔭 戰區 4：鑑古知今")
+    st.markdown("### 🦅 戰區 4：美股風向")
+    u1, u2, u3 = st.columns(3)
+    with u1: st.metric("費半指數", f"{get_val('^SOX'):.2f}", f"{sox_pct:.2f}%")
+    with u2: st.metric("那斯達克", f"{get_val('^NDX'):.2f}", f"{ndx_pct:.2f}%")
+    with u3: st.metric("台積電 ADR", f"{get_val('TSM'):.2f}", f"{tsm_pct:.2f}%")
+
+    st.divider()
+    st.markdown("### 🔭 戰區 5：鑑古知今")
     if not master_data.empty and not data_error:
         c_chart1, c_chart2 = st.columns(2)
         with c_chart1:
@@ -239,99 +286,106 @@ with tab1:
 
 
 with tab2:
-    st.markdown("## 🎯 盤後籌碼天地連線：土洋共識過濾引擎")
-    st.info("💡 **作戰指南：** 請先執行您電腦桌面上的「一鍵下載籌碼.bat」，接著將抓到的 CSV 檔案拖曳至下方對應的空位。系統將自動為您鎖定雙方共同買超的飆股！")
+    st.markdown("## 🎯 盤後籌碼天地連線：終極雙核過濾引擎")
+    st.caption("💡 **作戰指南**：請先執行桌面的「一鍵下載籌碼.bat」，接著將抓到的 CSV 檔案拖曳至下方對應的空位。系統將自動執行防接刀、防地雷與籌碼潔淨度掃描！")
     
-    col_up1, col_up2 = st.columns(2)
-    with col_up1:
-        file_foreign = st.file_uploader("📥 請上傳【1_外資買賣超.csv】", type=['csv'])
-    with col_up2:
-        file_trust = st.file_uploader("📥 請上傳【3_投信買賣超.csv】", type=['csv'])
+    col_up1, col_up2, col_up3 = st.columns(3)
+    with col_up1: file_foreign = st.file_uploader("📥 1_外資買賣超.csv", type=['csv'])
+    with col_up2: file_trust = st.file_uploader("📥 3_投信買賣超.csv", type=['csv'])
+    with col_up3: file_margin = st.file_uploader("📥 4_融資融券餘額.csv (選填)", type=['csv'])
 
-    # --- 內部資料清洗引擎 ---
+    # --- 資料清洗引擎 ---
     def clean_twse_csv(file_bytes):
-        try:
-            content = file_bytes.decode('utf-8-sig')
-        except:
-            content = file_bytes.decode('big5', errors='ignore')
-            
+        try: content = file_bytes.decode('utf-8-sig')
+        except: content = file_bytes.decode('big5', errors='ignore')
         lines = content.splitlines()
         header_idx = -1
         for i, line in enumerate(lines):
             if '證券代號' in line and '證券名稱' in line:
-                header_idx = i
-                break
-                
+                header_idx = i; break
         if header_idx == -1: return pd.DataFrame()
-        
         df = pd.read_csv(io.StringIO(content), skiprows=header_idx, engine='python', on_bad_lines='skip')
         df.columns = df.columns.str.strip().str.replace('"', '')
-        
-        # 尋找淨買賣超欄位
-        target_col = None
-        for col in df.columns:
-            if '買賣超' in col and '股數' in col:
-                target_col = col
-                break
-                
+        target_col = next((col for col in df.columns if '買賣超' in col and '股數' in col), None)
         if not target_col: return pd.DataFrame()
-        
-        # 資料清理
         df['證券代號'] = df['證券代號'].astype(str).str.replace('=', '').str.replace('"', '').str.strip()
         df['證券名稱'] = df['證券名稱'].astype(str).str.strip()
-        df[target_col] = df[target_col].astype(str).str.replace(',', '').str.strip()
-        df[target_col] = pd.to_numeric(df[target_col], errors='coerce').fillna(0)
-        
-        # 將股數轉換為張數
+        df[target_col] = pd.to_numeric(df[target_col].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
         df['買賣超張數'] = (df[target_col] / 1000).astype(int)
-        
         return df[['證券代號', '證券名稱', '買賣超張數']].dropna()
 
+    def clean_margin_csv(file_bytes):
+        try: content = file_bytes.decode('utf-8-sig')
+        except: content = file_bytes.decode('big5', errors='ignore')
+        lines = content.splitlines()
+        header_idx = -1
+        for i, line in enumerate(lines):
+            if '股票代號' in line and '前日餘額' in line:
+                header_idx = i; break
+        if header_idx == -1: return pd.DataFrame(columns=['證券代號', '融資增減(張)'])
+        df = pd.read_csv(io.StringIO("\n".join(lines[header_idx:])), header=None, skiprows=1, engine='python', on_bad_lines='skip')
+        df_margin = df[[0, 5, 6]].copy()
+        df_margin[0] = df_margin[0].astype(str).str.replace('=', '').str.replace('"', '').str.strip()
+        df_margin[5] = pd.to_numeric(df_margin[5].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
+        df_margin[6] = pd.to_numeric(df_margin[6].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
+        df_margin['融資增減(張)'] = (df_margin[6] - df_margin[5]).astype(int)
+        return df_margin[[0, '融資增減(張)']].rename(columns={0: '證券代號'})
+
+    # --- 雲端技術面掃描引擎 (yfinance) ---
+    @st.cache_data(ttl=3600, show_spinner=False)
+    def get_trend_status(tickers):
+        status_dict = {}
+        for ticker in tickers:
+            try:
+                hist = yf.Ticker(f"{ticker}.TW").history(period="2mo")
+                if hist.empty: hist = yf.Ticker(f"{ticker}.TWO").history(period="2mo")
+                if not hist.empty and len(hist) >= 20:
+                    ma20 = hist['Close'].rolling(window=20).mean().iloc[-1]
+                    close = hist['Close'].iloc[-1]
+                    status_dict[ticker] = "🟢 站上月線 (多)" if close > ma20 else "🔴 跌破月線 (空)"
+                else: status_dict[ticker] = "🟡 待確認"
+            except: status_dict[ticker] = "⚫ 未知"
+        return status_dict
+
     if file_foreign and file_trust:
-        with st.spinner("⚙️ AI 戰術引擎正在過濾土洋共識名單..."):
+        with st.spinner("⚙️ AI 終極雙核過濾引擎運算中..."):
             df_foreign = clean_twse_csv(file_foreign.read())
             df_trust = clean_twse_csv(file_trust.read())
+            df_margin = clean_margin_csv(file_margin.read()) if file_margin else pd.DataFrame(columns=['證券代號', '融資增減(張)'])
             
             if not df_foreign.empty and not df_trust.empty:
-                # 進行交集比對
                 merged = pd.merge(df_foreign, df_trust, on=['證券代號', '證券名稱'], suffixes=('_外資', '_投信'))
-                # 篩選條件：外資與投信同時買超大於 0 張
+                
+                # --- 模組 1：共識買超 + 趨勢掃描 + 融資掃描 ---
                 consensus = merged[(merged['買賣超張數_外資'] > 0) & (merged['買賣超張數_投信'] > 0)].copy()
                 consensus['雙主力總買超'] = consensus['買賣超張數_外資'] + consensus['買賣超張數_投信']
-                consensus = consensus.sort_values(by='雙主力總買超', ascending=False).head(15).reset_index(drop=True)
-                consensus.index = consensus.index + 1
+                consensus = consensus.sort_values(by='雙主力總買超', ascending=False).head(15)
                 
-                st.divider()
-                st.markdown("### 🔥 【終極狙擊名單】土洋共識重疊買超 (Top 15)")
                 if not consensus.empty:
-                    st.success("🎯 **AI 判定**：以下標的在今日殺盤中，獲得外資與投信「同時」砸重金買進，具備極強的籌碼防禦力與攻擊潛力！")
+                    # 加入融資數據
+                    if not df_margin.empty:
+                        consensus = pd.merge(consensus, df_margin, on='證券代號', how='left').fillna(0)
+                        consensus['籌碼潔淨度'] = consensus['融資增減(張)'].apply(lambda x: "✨ 極佳 (散戶退)" if x < 0 else "⚠️ 凌亂 (散戶進)")
+                    
+                    # 啟動雲端月線檢查
+                    trend_dict = get_trend_status(consensus['證券代號'].tolist())
+                    consensus['月線趨勢'] = consensus['證券代號'].map(trend_dict)
+                    
+                    consensus.index = range(1, len(consensus) + 1)
+                    
+                    st.divider()
+                    st.markdown("### 🔥 【S 級狙擊名單】土洋共識買超 (Top 15)")
+                    st.success("🎯 **操作指南**：優先鎖定【籌碼潔淨度 = ✨極佳】且【月線趨勢 = 🟢站上月線】的標的，勝率最高！避開跌破月線的接刀股。")
                     st.dataframe(consensus, use_container_width=True)
-                else:
-                    st.warning("⚔️ 今日大盤撕裂嚴重，外資與投信沒有任何交集買超的標的。")
 
-# ================= 新增：土洋聯合追殺榜 =================
+                # --- 模組 2：地雷預警 (雙重追殺榜) ---
                 sell_consensus = merged[(merged['買賣超張數_外資'] < 0) & (merged['買賣超張數_投信'] < 0)].copy()
                 sell_consensus['雙主力總賣超'] = sell_consensus['買賣超張數_外資'] + sell_consensus['買賣超張數_投信']
-                sell_consensus = sell_consensus.sort_values(by='雙主力總賣超', ascending=True).head(15).reset_index(drop=True)
+                sell_consensus = sell_consensus.sort_values(by='雙主力總賣超', ascending=True).head(10).reset_index(drop=True)
                 sell_consensus.index = sell_consensus.index + 1
                 
                 st.divider()
-                st.markdown("### 💣 【地雷預警名單】土洋共識重疊賣超 (Top 15)")
+                st.markdown("### 💣 【地雷預警名單】土洋無情拋售 (Top 10)")
                 if not sell_consensus.empty:
-                    st.error("🚨 **AI 警告**：以下標的遭到外資與投信「聯手無情拋售」，籌碼極度渙散，嚴禁摸底接刀！")
+                    st.error("🚨 **AI 警告**：以下標的遭到外資與投信「聯手重擊拋售」，籌碼極度渙散，就算跌停也【嚴禁摸底接刀】！")
                     st.dataframe(sell_consensus, use_container_width=True)
-                else:
-                    st.success("🛡️ 今日無雙法人聯合追殺之標的。")
-
-                
-                # 顯示個別排行榜
-                st.divider()
-                c1, c2 = st.columns(2)
-                with c1:
-                    st.markdown("#### 🔵 外資買超排行榜")
-                    st.dataframe(df_foreign.sort_values(by='買賣超張數', ascending=False).head(10).reset_index(drop=True), use_container_width=True)
-                with c2:
-                    st.markdown("#### 🟢 投信買超排行榜")
-                    st.dataframe(df_trust.sort_values(by='買賣超張數', ascending=False).head(10).reset_index(drop=True), use_container_width=True)
-            else:
-                st.error("❌ 檔案解析失敗，請確認上傳的是證交所原始的 CSV 檔案。")
