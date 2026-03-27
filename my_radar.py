@@ -305,7 +305,6 @@ with tab1:
     col_up1, col_up2, col_up3 = st.columns(3)
     # ...(下方保留您原本的上傳按鈕與所有核心程式碼，完全不變動)...
     
-    col_up1, col_up2, col_up3 = st.columns(3)
     with col_up1: file_foreign = st.file_uploader("📥 1_外資買賣超.csv", type=['csv'])
     with col_up2: file_trust = st.file_uploader("📥 3_投信買賣超.csv", type=['csv'])
     with col_up3: file_margin = st.file_uploader("📥 4_融資融券餘額.csv (選填)", type=['csv'])
