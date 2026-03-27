@@ -214,23 +214,29 @@ with tab1:
     st.divider()
     st.markdown("### 🌐 戰區 2：恐慌波動 (⚠️紅向上=危險)")
     c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        st.metric("VIX 比值 /比值 > 1.0」，甚至 > 1.05，代表市場認為**「現在、立刻、馬上」就要出大事了", f"{ratio_vix_vix3m:.2f}", delta=f"{ratio_delta:.2f}", delta_color="inverse")
+with c1:
+        st.metric("VIX 比值", f"{ratio_vix_vix3m:.2f}", delta=f"{ratio_delta:.2f}", delta_color="inverse")
+        st.caption("💡 比值 > 1.0，甚至> 1.05 代表馬上出大事")
         if not data_error:
             if is_vix_inverted: st.error("🚨 **極度恐慌倒掛**\n\n🎯 **動作**: 暫停買進，準備避險")
             elif ratio_vix_vix3m > 1: st.warning("⚠️ **逆價差爆發**\n\n🎯 **動作**: 準備抄底")
             else: st.success("✅ **正價差**\n\n🎯 **動作**: 抱緊多單")
+            
     with c2:
-        st.metric("VVIX 避險 / 飆高破 115 後的 1~3 天內，大盤就會出現千點級別的下殺", f"{vvix_latest:.1f}", delta=f"{vvix_delta:.1f}", delta_color="inverse")
+        st.metric("VVIX 避險", f"{vvix_latest:.1f}", delta=f"{vvix_delta:.1f}", delta_color="inverse")
+        st.caption("💡 破115後的1~3天內慎防千點下殺")
         if not data_error:
             if vvix_latest > 115: st.error("🔥 **造市商瘋狂避險**\n\n🎯 **動作**: 大幅減碼")
             elif vvix_latest > 110: st.warning("⚠️ **大戶避險**\n\n🎯 **動作**: 拉高停利點")
             else: st.success("✅ **情緒正常**\n\n🎯 **動作**: 按兵不動")
+            
     with c3:
-        st.metric("SKEW 尾部 / 這是最準確的崩盤前兆之一！" , f"{get_val('^SKEW'):.1f}", delta=f"{skew_delta:.1f}", delta_color="inverse")
+        st.metric("SKEW 尾部", f"{get_val('^SKEW'):.1f}", delta=f"{skew_delta:.1f}", delta_color="inverse")
+        st.caption("💡 飆破140，最準確的崩盤前兆之一")
         if not data_error:
             if get_val('^SKEW') > 140: st.error("💣 **黑天鵝預警**\n\n🎯 **動作**: 鎖死現金避險")
             else: st.success("✅ **風險低**\n\n🎯 **動作**: 維持正常配置")
+                
     with c4:
         st.metric("VIX 乖離", f"{diff_vix9d_vix:.2f}", delta=f"{diff_delta:.2f}", delta_color="inverse")
         if not data_error:
