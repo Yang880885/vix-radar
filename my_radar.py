@@ -227,7 +227,7 @@ with tab1:
             elif vvix_latest > 110: st.warning("⚠️ **大戶避險**\n\n🎯 **動作**: 拉高停利點")
             else: st.success("✅ **情緒正常**\n\n🎯 **動作**: 按兵不動")
     with c3:
-        st.metric("SKEW 尾部" 這是最準確的崩盤前兆之一！, f"{get_val('^SKEW'):.1f}", delta=f"{skew_delta:.1f}", delta_color="inverse")
+        st.metric("SKEW 尾部 - 這是最準確的崩盤前兆之一！" , f"{get_val('^SKEW'):.1f}", delta=f"{skew_delta:.1f}", delta_color="inverse")
         if not data_error:
             if get_val('^SKEW') > 140: st.error("💣 **黑天鵝預警**\n\n🎯 **動作**: 鎖死現金避險")
             else: st.success("✅ **風險低**\n\n🎯 **動作**: 維持正常配置")
