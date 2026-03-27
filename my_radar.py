@@ -240,11 +240,11 @@ with tab1:
     with c4:
         st.metric("VIX 乖離", f"{diff_vix9d_vix:.2f}", delta=f"{diff_delta:.2f}", delta_color="inverse", 
                   help="⚠️ > 0 代表短線極度恐慌，隨時可能報復性 V 轉；> 2.0 代表突發短線崩跌，嚴防連續接刀！")
+        st.caption("💡 短線狙擊與避險指標")
         if not data_error:
             if is_short_panic: st.error("🔥 **突發短線崩跌**\n\n🎯 **動作**: 嚴防連續下殺")
             elif diff_vix9d_vix > 0: st.warning("⚠️ **情緒轉弱**\n\n🎯 **動作**: 隨時報復性V轉")
             else: st.success("✅ **無異常**\n\n🎯 **動作**: 不隨意短線進出")
-
     st.divider()
     st.markdown("### 💸 戰區 3：資金風險 (⚠️紅向上=撤退)")
     f1, f2, f3 = st.columns(3)
