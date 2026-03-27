@@ -288,6 +288,26 @@ with tab1:
 with tab2:
     st.markdown("## 🎯 盤後籌碼天地連線：終極雙核過濾引擎")
     st.caption("💡 **作戰指南**：請先執行桌面的「一鍵下載籌碼.bat」，接著將抓到的 CSV 檔案拖曳至下方對應的空位。系統將自動執行防接刀、防地雷與籌碼潔淨度掃描！")
+
+    with tab2:
+    st.markdown("## 🎯 盤後籌碼天地連線：終極雙核過濾引擎")
+    st.caption("💡 **作戰指南**：請點擊下方按鈕或執行桌面的「一鍵下載籌碼.bat」，接著將抓到的 CSV 檔案拖曳至下方對應的空位。")
+    
+    # ================= 新增：一鍵啟動按鈕 =================
+    if st.button("🚀 啟動籌碼雷達 (本機專用)"):
+        import subprocess
+        try:
+            with st.spinner("⏳ 總部連線中：正在向證交所請求最新籌碼彈藥..."):
+                # 這裡直接呼叫您的本機 Python 腳本
+                subprocess.run(["python", r"C:\Users\love1\Desktop\一鍵下載引擎\auto_download_chips.py"], check=True)
+            st.success("✅ 報告指揮官，最新籌碼彈藥已成功下載至您的桌面資料夾！請將檔案拖曳至下方。")
+        except Exception as e:
+            st.error(f"❌ 總部連線失敗：{e}")
+            st.warning("⚠️ 戰情室提醒：若您是將雷達部署在「Streamlit 雲端」，雲端伺服器無法直接控制您的個人電腦，請改為手動點擊桌面的 .bat 檔。此按鈕僅在您使用本機 (Localhost) 執行雷達時有效！")
+    # ======================================================
+
+    col_up1, col_up2, col_up3 = st.columns(3)
+    # ...(下方保留您原本的上傳按鈕與所有核心程式碼，完全不變動)...
     
     col_up1, col_up2, col_up3 = st.columns(3)
     with col_up1: file_foreign = st.file_uploader("📥 1_外資買賣超.csv", type=['csv'])
