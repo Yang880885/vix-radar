@@ -237,7 +237,7 @@ with tab1:
             if get_val('^SKEW') > 140: st.error("💣 **黑天鵝預警**\n\n🎯 **動作**: 鎖死現金避險")
             else: st.success("✅ **風險低**\n\n🎯 **動作**: 維持正常配置")
                 
-with c4:
+    with c4:
         st.metric("VIX 乖離", f"{diff_vix9d_vix:.2f}", delta=f"{diff_delta:.2f}", delta_color="inverse", 
                   help="⚠️ > 0 代表短線極度恐慌，隨時可能報復性 V 轉；> 2.0 代表突發短線崩跌，嚴防連續接刀！")
         if not data_error:
