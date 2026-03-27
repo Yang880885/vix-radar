@@ -5,8 +5,8 @@ import requests
 import json
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import datetime
 import io
+import datetime   # <--- 就是少了這一位報時官！請把它補上！
 
 st.set_page_config(page_title="獵人戰情室：波段導航儀 8.1 終極版", layout="wide")
 st.title("🎯 台股波段轉折導航儀")
