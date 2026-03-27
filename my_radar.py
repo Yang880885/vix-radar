@@ -394,8 +394,8 @@ with tab2:
                 if not sell_consensus.empty:
                     st.error("🚨 **AI 警告**：以下標的遭到外資與投信「聯手重擊拋售」，籌碼極度渙散，就算跌停也【嚴禁摸底接刀】！")
                     st.dataframe(sell_consensus, use_container_width=True)
-                
-                # ================= 新增：戰情報表下載按鈕 =================
+
+# ================= 新增：戰情報表下載按鈕 (Excel防亂碼版) =================
                 st.divider()
                 st.markdown("### 📥 戰情報表輸出")
                 
@@ -410,14 +410,19 @@ with tab2:
                 df_export = pd.concat([export_buy, export_sell], ignore_index=True)
                 
                 if not df_export.empty:
-                    # 轉換成 utf-8-sig 編碼的 CSV (讓 Excel 打開不會亂碼)
-                    csv_data = df_export.to_csv(index=False, encoding='utf-8-sig')
+                    # 建立一個記憶體緩衝區來存放 Excel 檔案
+                    import io
+                    buffer = io.BytesIO()
+                    
+                    # 將資料寫入 Excel 格式
+                    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                        df_export.to_excel(writer, index=False, sheet_name='今日戰情總表')
                     
                     st.download_button(
-                        label="📥 一鍵下載【今日土洋狙擊與地雷】總表 (CSV)",
-                        data=csv_data,
-                        file_name=f"獵人戰情報表_{datetime.date.today().strftime('%Y%m%d')}.csv",
-                        mime="text/csv"
+                        label="📥 一鍵下載【今日土洋狙擊與地雷】總表 (Excel完美版)",
+                        data=buffer.getvalue(),
+                        file_name=f"獵人戰情報表_{datetime.date.today().strftime('%Y%m%d')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
                 else:
                     st.info("💡 今日無共識數據可供匯出。")
