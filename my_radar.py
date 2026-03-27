@@ -390,11 +390,6 @@ with tab2:
                     st.error("🚨 **AI 警告**：以下標的遭到外資與投信「聯手重擊拋售」，籌碼極度渙散，就算跌停也【嚴禁摸底接刀】！")
                     st.dataframe(sell_consensus, use_container_width=True)
 
-# ... (上方是原本顯示地雷預警名單的程式碼) ...
-                if not sell_consensus.empty:
-                    st.error("🚨 **AI 警告**：以下標的遭到外資與投信「聯手重擊拋售」，籌碼極度渙散，就算跌停也【嚴禁摸底接刀】！")
-                    st.dataframe(sell_consensus, use_container_width=True)
-
 # ================= 新增：戰情報表下載按鈕 (Excel防亂碼版) =================
                 st.divider()
                 st.markdown("### 📥 戰情報表輸出")
