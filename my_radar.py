@@ -389,3 +389,36 @@ with tab2:
                 if not sell_consensus.empty:
                     st.error("🚨 **AI 警告**：以下標的遭到外資與投信「聯手重擊拋售」，籌碼極度渙散，就算跌停也【嚴禁摸底接刀】！")
                     st.dataframe(sell_consensus, use_container_width=True)
+
+# ... (上方是原本顯示地雷預警名單的程式碼) ...
+                if not sell_consensus.empty:
+                    st.error("🚨 **AI 警告**：以下標的遭到外資與投信「聯手重擊拋售」，籌碼極度渙散，就算跌停也【嚴禁摸底接刀】！")
+                    st.dataframe(sell_consensus, use_container_width=True)
+                
+                # ================= 新增：戰情報表下載按鈕 =================
+                st.divider()
+                st.markdown("### 📥 戰情報表輸出")
+                
+                # 準備要匯出的資料，並加上分類標籤
+                export_buy = consensus.copy() if not consensus.empty else pd.DataFrame()
+                export_sell = sell_consensus.copy() if not sell_consensus.empty else pd.DataFrame()
+                
+                if not export_buy.empty: export_buy.insert(0, '名單分類', '🟢 S級狙擊 (共識買超)')
+                if not export_sell.empty: export_sell.insert(0, '名單分類', '🔴 地雷預警 (聯手拋售)')
+                
+                # 將買超與賣超名單合併成一張總表
+                df_export = pd.concat([export_buy, export_sell], ignore_index=True)
+                
+                if not df_export.empty:
+                    # 轉換成 utf-8-sig 編碼的 CSV (讓 Excel 打開不會亂碼)
+                    csv_data = df_export.to_csv(index=False, encoding='utf-8-sig')
+                    
+                    st.download_button(
+                        label="📥 一鍵下載【今日土洋狙擊與地雷】總表 (CSV)",
+                        data=csv_data,
+                        file_name=f"獵人戰情報表_{datetime.date.today().strftime('%Y%m%d')}.csv",
+                        mime="text/csv"
+                    )
+                else:
+                    st.info("💡 今日無共識數據可供匯出。")
+                # ========================================================
