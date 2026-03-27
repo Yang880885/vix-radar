@@ -214,7 +214,7 @@ with tab1:
     st.divider()
     st.markdown("### 🌐 戰區 2：恐慌波動 (⚠️紅向上=危險)")
     c1, c2, c3, c4 = st.columns(4)
-with c1:
+    with c1:
         st.metric("VIX 比值", f"{ratio_vix_vix3m:.2f}", delta=f"{ratio_delta:.2f}", delta_color="inverse")
         st.caption("💡 比值 > 1.0，甚至> 1.05 代表馬上出大事")
         if not data_error:
