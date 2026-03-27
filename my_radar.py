@@ -376,7 +376,7 @@ with tab2:
                     st.divider()
                     st.markdown("### 🔥 【S 級狙擊名單】土洋共識買超 (Top 15)")
                     st.success("🎯 **操作指南**：優先鎖定【籌碼潔淨度 = ✨極佳】且【月線趨勢 = 🟢站上月線】的標的，勝率最高！避開跌破月線的接刀股。")
-                    st.dataframe(consensus, use_container_width=True)
+                    st.dataframe(consensus, use_container_width=True, height=600)
 
                 # --- 模組 2：地雷預警 (雙重追殺榜) ---
                 sell_consensus = merged[(merged['買賣超張數_外資'] < 0) & (merged['買賣超張數_投信'] < 0)].copy()
@@ -388,7 +388,7 @@ with tab2:
                 st.markdown("### 💣 【地雷預警名單】土洋無情拋售 (Top 10)")
                 if not sell_consensus.empty:
                     st.error("🚨 **AI 警告**：以下標的遭到外資與投信「聯手重擊拋售」，籌碼極度渙散，就算跌停也【嚴禁摸底接刀】！")
-                    st.dataframe(sell_consensus, use_container_width=True)
+                    st.dataframe(sell_consensus, use_container_width=True, height=420)
 
 # ================= 新增：戰情報表下載按鈕 (Excel防亂碼版) =================
                 st.divider()
