@@ -285,16 +285,15 @@ with tab1:
                 st.plotly_chart(fig2, use_container_width=True)
 
 
-    with tab2:
+with tab2:
     st.markdown("## 🎯 盤後籌碼天地連線：終極雙核過濾引擎")
-    st.caption("💡 **作戰指南**：請點擊下方按鈕或執行桌面的「一鍵下載籌碼.bat」，接著將抓到的 CSV 檔案拖曳至下方對應的空位。系統將自動執行防接刀、防地雷與籌碼潔淨度掃描！")
+    st.caption("💡 **作戰指南**：請點擊下方按鈕或執行桌面的「一鍵下載籌碼.bat」，接著將抓到的 CSV 檔案拖曳至下方對應的空位。")
     
     # ================= 新增：一鍵啟動按鈕 =================
     if st.button("🚀 啟動籌碼雷達 (本機專用)"):
         import subprocess
         try:
             with st.spinner("⏳ 總部連線中：正在向證交所請求最新籌碼彈藥..."):
-                # 這裡直接呼叫您的本機 Python 腳本
                 subprocess.run(["python", r"C:\Users\love1\Desktop\一鍵下載引擎\auto_download_chips.py"], check=True)
             st.success("✅ 報告指揮官，最新籌碼彈藥已成功下載至您的桌面資料夾！請將檔案拖曳至下方。")
         except Exception as e:
