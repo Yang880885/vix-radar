@@ -232,7 +232,7 @@ with tab1:
             
     with c3:
         st.metric("SKEW 尾部", f"{get_val('^SKEW'):.1f}", delta=f"{skew_delta:.1f}", delta_color="inverse")
-        st.caption("💡 飆破140，最準確的崩盤前兆之一")
+        st.caption("💡 飆破140。135~145新常態、衝破155甚至160以上，且持續數天高檔不墜時，最準確的崩盤前兆之一。")
         if not data_error:
             if get_val('^SKEW') > 140: st.error("💣 **黑天鵝預警**\n\n🎯 **動作**: 鎖死現金避險")
             else: st.success("✅ **風險低**\n\n🎯 **動作**: 維持正常配置")
